@@ -32,7 +32,7 @@ import type {OverscaledTileID} from './tile_id';
 import type Framebuffer from '../gl/framebuffer';
 import type {PerformanceResourceTiming} from '../types/performance_resource_timing';
 import type Transform from '../geo/transform';
-import type {FeatureStates} from './source_cache';
+import type {LayerFeatureStates} from './source_state';
 
 export type TileState =
     | 'loading'   // Tile data is in the process of loading.
@@ -417,7 +417,7 @@ class Tile {
         }
     }
 
-    updateFeatureState(states: FeatureStates) {
+    updateFeatureState(states: LayerFeatureStates) {
         if (!this.rawTileData || Object.keys(states).length === 0) return;
 
         if (!this.vtLayers) {
@@ -430,7 +430,7 @@ class Tile {
             const sourceLayerId = bucket.layers[0]['sourceLayer'] || '_geojsonTileLayer';
             const sourceLayer = this.vtLayers[sourceLayerId];
             const sourceLayerStates = states[sourceLayerId];
-            if (!sourceLayer || Object.keys(sourceLayerStates).length === 0) return;
+            if (!sourceLayer || !sourceLayerStates || Object.keys(sourceLayerStates).length === 0) continue;
 
             bucket.update(sourceLayerStates, sourceLayer);
         }
