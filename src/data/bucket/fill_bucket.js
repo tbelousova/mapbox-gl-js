@@ -32,7 +32,7 @@ class FillBucket implements Bucket {
     overscaling: number;
     layers: Array<FillStyleLayer>;
     layerIds: Array<string>;
-    stateDependent: boolean;
+    stateDependentLayers: Array<FillStyleLayer>;
 
     layoutVertexArray: FillLayoutArray;
     layoutVertexBuffer: VertexBuffer;
@@ -55,7 +55,6 @@ class FillBucket implements Bucket {
         this.layers = options.layers;
         this.layerIds = this.layers.map(layer => layer.id);
         this.index = options.index;
-        this.stateDependent = this.layers[0].isStateDependent();
 
         this.layoutVertexArray = new FillLayoutArray();
         this.indexArray = new TriangleIndexArray();
@@ -76,8 +75,8 @@ class FillBucket implements Bucket {
     }
 
     update(states: FeatureStates, vtLayer: VectorTileLayer) {
-        if (!this.stateDependent) return;
-        this.changed = this.programConfigurations.updatePaintArrays(states, vtLayer, this.layers);
+        if (!this.stateDependentLayers.length) return;
+        this.changed = this.programConfigurations.updatePaintArrays(states, vtLayer, this.stateDependentLayers);
     }
 
     isEmpty() {
