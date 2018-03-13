@@ -54,12 +54,14 @@ function packColor(color: Color): [number, number] {
  */
 interface Binder<T> {
     statistics: { max: number };
+    paintVertexArray?: StructArray;
 
     populatePaintArray(length: number, feature: Feature): void;
     upload(Context): void;
     destroy(): void;
 
     defines(): Array<string>;
+    isDataDriven(): boolean;
 
     setUniforms(context: Context,
                 program: Program,
@@ -82,6 +84,10 @@ class ConstantBinder<T> implements Binder<T> {
 
     defines() {
         return this.names.map(name => `#define HAS_UNIFORM_u_${name}`);
+    }
+
+    isDataDriven() {
+        return false;
     }
 
     populatePaintArray() {}
@@ -134,6 +140,10 @@ class SourceExpressionBinder<T> implements Binder<T> {
 
     defines() {
         return [];
+    }
+
+    isDataDriven() {
+        return true;
     }
 
     populatePaintArray(length: number, feature: Feature) {
@@ -209,6 +219,10 @@ class CompositeExpressionBinder<T> implements Binder<T> {
 
     defines() {
         return [];
+    }
+
+    isDataDriven() {
+        return true;
     }
 
     populatePaintArray(length: number, feature: Feature) {

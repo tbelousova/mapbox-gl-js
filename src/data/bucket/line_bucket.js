@@ -4,7 +4,7 @@ import { LineLayoutArray } from '../array_types';
 
 import { members as layoutAttributes } from './line_attributes';
 import SegmentVector from '../segment';
-import { ProgramConfigurationSet, SourceExpressionBinder, CompositeExpressionBinder } from '../program_configuration';
+import { ProgramConfigurationSet } from '../program_configuration';
 import { TriangleIndexArray } from '../index_array_type';
 import loadGeometry from '../load_geometry';
 import EXTENT from '../extent';
@@ -24,12 +24,10 @@ import type {Segment} from '../segment';
 import type Context from '../../gl/context';
 import type IndexBuffer from '../../gl/index_buffer';
 import type VertexBuffer from '../../gl/vertex_buffer';
-import type {CrossFaded} from '../../style/cross_faded';
 import type {StyleImage} from '../../style/style_image';
 import type {ImagePosition} from '../../render/image_atlas';
 
 export type LineFeature = {|
-    image: ?CrossFaded<string>,
     index: number,
     sourceLayerIndex: number,
     geometry: Array<Array<Point>>,
@@ -107,7 +105,7 @@ class LineBucket implements Bucket {
     layers: Array<LineStyleLayer>;
     layerIds: Array<string>;
     features: Array<LineFeature>;
-    dataDrivenPattern: boolean;
+    dataDrivenPatternLayers: Array<number>;
 
     layoutVertexArray: LineLayoutArray;
     layoutVertexBuffer: VertexBuffer;
@@ -135,16 +133,14 @@ class LineBucket implements Bucket {
         this.programConfigurations = new ProgramConfigurationSet(layoutAttributes, options.layers, options.zoom);
         this.segments = new SegmentVector();
 
-        this.dataDrivenPattern = false;
+        this.dataDrivenPatternLayers = [];
 
-        for (const key in this.programConfigurations) {
-            const programConfiguration = this.programConfigurations[key];
-            for (const layer in programConfiguration) {
-                const binders = programConfiguration[layer].binders;
-                if (binders && binders['line-pattern'] && binders['line-pattern'].paintVertexArray) {
-                    this.dataDrivenPattern = true;
-                    break;
-                }
+
+        for (let i = 0; i < this.layerIds.length; i++) {
+            const id = this.layerIds[i];
+            const programConfiguration = this.programConfigurations.get(id);
+            if (programConfiguration.binders && programConfiguration.binders['line-pattern'] && programConfiguration.binders['line-pattern'].isDataDriven()) {
+                this.dataDrivenPatternLayers.push(i);
             }
         }
     }
@@ -154,18 +150,21 @@ class LineBucket implements Bucket {
         this.features = [];
         for (const {feature, index, sourceLayerIndex} of features) {
             if (!this.layers[0]._featureFilter({zoom: this.zoom}, feature)) continue;
-            if (this.dataDrivenPattern) {
-                const layer = this.layers[0];
-                const linePattern = layer.paint.get('line-pattern');
-                const image = linePattern.evaluate(feature);
-                if (image) {
-                    icons[image.min] = true;
-                    icons[image.mid] = true;
-                    icons[image.max] = true;
+            if (this.dataDrivenPatternLayers.length) {
+                for (let i = 0; i < this.dataDrivenPatternLayers.length; i++) {
+                    const layerIdx = this.dataDrivenPatternLayers[i];
+                    const layer = this.layers[layerIdx];
+                    const linePattern = layer.paint.get('line-pattern');
+                    const image = linePattern.evaluate(feature);
+                    if (image) {
+                        icons[image.min] = true;
+                        icons[image.mid] = true;
+                        icons[image.max] = true;
+                    }
                 }
+
                 const geometry = loadGeometry(feature);
                 const lineFeature: LineFeature = {
-                    image: image,
                     sourceLayerIndex: sourceLayerIndex,
                     index: index,
                     geometry: geometry,
@@ -506,26 +505,25 @@ class LineBucket implements Bucket {
         }
 
         this.programConfigurations.populatePaintArrays(this.layoutVertexArray.length, feature);
-        if (this.dataDrivenPattern) this.populatePatternPaintArray(this.layoutVertexArray.length, feature);
+        if (this.dataDrivenPatternLayers.length) this.populatePatternPaintArray(this.layoutVertexArray.length, feature);
     }
 
     populatePatternPaintArray(length: number, feature: VectorTileFeature | LineFeature) {
         for (const layer of this.layers) {
             const programConfiguration = this.programConfigurations.get(layer.id);
-            if (programConfiguration.binders && programConfiguration.binders['line-pattern'] && (programConfiguration.binders['line-pattern'] instanceof SourceExpressionBinder || programConfiguration.binders['line-pattern'] instanceof CompositeExpressionBinder)) {
-                const paintArray = programConfiguration.binders['line-pattern'].paintVertexArray;
-                const start = paintArray.length;
+            if (programConfiguration.binders && programConfiguration.binders['line-pattern'] &&
+                programConfiguration.binders['line-pattern'].isDataDriven()) {
 
-                paintArray.reserve(length);
-                if (feature.image) {
-                    const image = (feature.image: any);
+                const linePattern = layer.paint.get('line-pattern');
+                const image = linePattern.evaluate(feature);
+                const paintArray = programConfiguration.binders['line-pattern'].paintVertexArray;
+
+                if (paintArray && image) {
                     const imageMin = this.imagePositions[image.min];
                     const imageMid = this.imagePositions[image.mid];
                     const imageMax = this.imagePositions[image.max];
 
-                    if (!imageMin || !imageMid || !imageMax) {
-                        return;
-                    }
+                    if (!imageMin || !imageMid || !imageMax) return;
 
                     // will delete this once we decide on a packing strategy for line-pattern
                     // const minTL = packUint8ToFloat(imageMin.tl[0], imageMin.tl[1]);
@@ -535,14 +533,16 @@ class LineBucket implements Bucket {
                     // const maxTL = packUint8ToFloat(imageMax.tl[0], imageMax.tl[1]);
                     // const maxBR = packUint8ToFloat(imageMax.br[0], imageMax.br[1]);
 
+                    paintArray.reserve(length);
+                    const start = paintArray.length;
                     for (let i = start; i < length; i++) {
                         paintArray.emplaceBack(
-                                // minTL, minBR,
-                                // midTL, midBR,
-                                // maxTL, maxBR
-                                imageMin.tl[0], imageMin.tl[1], imageMin.br[0], imageMin.br[1],
-                                imageMid.tl[0], imageMid.tl[1], imageMid.br[0], imageMid.br[1],
-                                imageMax.tl[0], imageMax.tl[1], imageMax.br[0], imageMax.br[1]
+                            // minTL, minBR,
+                            // midTL, midBR,
+                            // maxTL, maxBR
+                            imageMin.tl[0], imageMin.tl[1], imageMin.br[0], imageMin.br[1],
+                            imageMid.tl[0], imageMid.tl[1], imageMid.br[0], imageMid.br[1],
+                            imageMax.tl[0], imageMax.tl[1], imageMax.br[0], imageMax.br[1]
                         );
                     }
                 }

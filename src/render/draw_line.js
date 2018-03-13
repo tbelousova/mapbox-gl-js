@@ -106,7 +106,7 @@ function drawLineTile(program, painter, tile, bucket, layer, coord, programConfi
         }
     }
 
-    if (bucket.dataDrivenPattern && linePattern.value.kind !== "constant") {
+    if (linePattern.value.kind !== "constant") {
         gl.uniform1i(program.uniforms.u_image, 0);
         context.activeTexture.set(gl.TEXTURE0);
         tile.iconAtlasTexture.bind(gl.NEAREST, gl.CLAMP_TO_EDGE);
