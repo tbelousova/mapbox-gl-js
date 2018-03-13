@@ -7,7 +7,7 @@ export const lineLayoutAttributes = createLayout([
 ], 4);
 
 // these attributes are only needed if using data-driven line-pattern
-const linePatternAttributes = createLayout([
+export const linePatternAttributes = createLayout([
     // [tl.x, tl.y, br.x, br.y]
     {name: 'a_pattern_min', components: 4, type: 'Float32'},
     {name: 'a_pattern_mid', components: 4, type: 'Float32'},

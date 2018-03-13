@@ -4,7 +4,7 @@ import { LineLayoutArray } from '../array_types';
 
 import { members as layoutAttributes } from './line_attributes';
 import SegmentVector from '../segment';
-import { ProgramConfigurationSet } from '../program_configuration';
+import { ProgramConfigurationSet, SourceExpressionBinder, CompositeExpressionBinder } from '../program_configuration';
 import { TriangleIndexArray } from '../index_array_type';
 import loadGeometry from '../load_geometry';
 import EXTENT from '../extent';
