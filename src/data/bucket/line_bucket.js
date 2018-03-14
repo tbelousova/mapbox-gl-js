@@ -148,46 +148,52 @@ class LineBucket implements Bucket {
     populate(features: Array<IndexedFeature>, options: PopulateParameters) {
         const icons = options.iconDependencies;
         this.features = [];
+
+        // add all icons needed for this tile to the tile's IconAtlas dependencies
+        for (const layer of this.layers) {
+            const linePattern = layer.paint.get('line-pattern');
+            const image = linePattern.constantOr(null);
+            if (image) {
+                icons[image.min] = true;
+                icons[image.mid] = true;
+                icons[image.max] = true;
+            }
+        }
+
         for (const {feature, index, sourceLayerIndex} of features) {
             if (!this.layers[0]._featureFilter({zoom: this.zoom}, feature)) continue;
-            if (this.dataDrivenPatternLayers.length) {
-                for (let i = 0; i < this.dataDrivenPatternLayers.length; i++) {
-                    const layerIdx = this.dataDrivenPatternLayers[i];
-                    const layer = this.layers[layerIdx];
-                    const linePattern = layer.paint.get('line-pattern');
-                    const image = linePattern.evaluate(feature);
-                    if (image) {
-                        icons[image.min] = true;
-                        icons[image.mid] = true;
-                        icons[image.max] = true;
-                    }
+            for (let i = 0; i < this.dataDrivenPatternLayers.length; i++) {
+                const layerIdx = this.dataDrivenPatternLayers[i];
+                const layer = this.layers[layerIdx];
+                const linePattern = layer.paint.get('line-pattern');
+                const image = linePattern.evaluate(feature);
+                if (image) {
+                    icons[image.min] = true;
+                    icons[image.mid] = true;
+                    icons[image.max] = true;
                 }
-
-                const geometry = loadGeometry(feature);
-                const lineFeature: LineFeature = {
-                    sourceLayerIndex: sourceLayerIndex,
-                    index: index,
-                    geometry: geometry,
-                    properties: feature.properties,
-                    type: feature.type
-                };
-
-                if (typeof feature.id !== 'undefined') {
-                    lineFeature.id = feature.id;
-                }
-
-                this.features.push(lineFeature);
-                options.featureIndex.insert(feature, geometry, index, sourceLayerIndex, this.index);
-            } else {
-                const geometry = loadGeometry(feature);
-                this.addFeature(feature, geometry);
-                options.featureIndex.insert(feature, geometry, index, sourceLayerIndex, this.index);
             }
+
+            const geometry = loadGeometry(feature);
+            const lineFeature: LineFeature = {
+                sourceLayerIndex: sourceLayerIndex,
+                index: index,
+                geometry: geometry,
+                properties: feature.properties,
+                type: feature.type
+            };
+
+            if (typeof feature.id !== 'undefined') {
+                lineFeature.id = feature.id;
+            }
+
+            this.features.push(lineFeature);
+            options.featureIndex.insert(feature, geometry, index, sourceLayerIndex, this.index);
         }
     }
 
     // used if line-pattern is data-driven
-    addPatternFeatures(options: PopulateParameters, imageMap: {[string]: StyleImage}, imagePositions: {[string]: ImagePosition}) {
+    addFeatures(options: PopulateParameters, imageMap: {[string]: StyleImage}, imagePositions: {[string]: ImagePosition}) {
         this.imageMap = imageMap;
         this.imagePositions = imagePositions;
         for (const feature of this.features) {
