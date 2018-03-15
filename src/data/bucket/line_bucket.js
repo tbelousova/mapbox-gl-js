@@ -24,7 +24,6 @@ import type {Segment} from '../segment';
 import type Context from '../../gl/context';
 import type IndexBuffer from '../../gl/index_buffer';
 import type VertexBuffer from '../../gl/vertex_buffer';
-import type {StyleImage} from '../../style/style_image';
 import type {ImagePosition} from '../../render/image_atlas';
 
 export type LineFeature = {|
@@ -113,7 +112,6 @@ class LineBucket implements Bucket {
     indexArray: TriangleIndexArray;
     indexBuffer: IndexBuffer;
 
-    imageMap: {[string]: StyleImage};
     imagePositions: {[string]: ImagePosition};
 
     programConfigurations: ProgramConfigurationSet<LineStyleLayer>;
@@ -193,8 +191,7 @@ class LineBucket implements Bucket {
     }
 
     // used if line-pattern is data-driven
-    addFeatures(options: PopulateParameters, imageMap: {[string]: StyleImage}, imagePositions: {[string]: ImagePosition}) {
-        this.imageMap = imageMap;
+    addFeatures(options: PopulateParameters, imagePositions: {[string]: ImagePosition}) {
         this.imagePositions = imagePositions;
         for (const feature of this.features) {
             const {geometry} = feature;
@@ -510,51 +507,9 @@ class LineBucket implements Bucket {
             startOfLine = false;
         }
 
-        this.programConfigurations.populatePaintArrays(this.layoutVertexArray.length, feature);
-        if (this.dataDrivenPatternLayers.length) this.populatePatternPaintArray(this.layoutVertexArray.length, feature);
+        this.programConfigurations.populatePaintArrays(this.layoutVertexArray.length, feature, this.imagePositions);
     }
 
-    populatePatternPaintArray(length: number, feature: VectorTileFeature | LineFeature) {
-        for (const layer of this.layers) {
-            const programConfiguration = this.programConfigurations.get(layer.id);
-            if (programConfiguration.binders && programConfiguration.binders['line-pattern'] &&
-                programConfiguration.binders['line-pattern'].isDataDriven()) {
-
-                const linePattern = layer.paint.get('line-pattern');
-                const image = linePattern.evaluate(feature);
-                const paintArray = programConfiguration.binders['line-pattern'].paintVertexArray;
-
-                if (paintArray && image) {
-                    const imageMin = this.imagePositions[image.min];
-                    const imageMid = this.imagePositions[image.mid];
-                    const imageMax = this.imagePositions[image.max];
-
-                    if (!imageMin || !imageMid || !imageMax) return;
-
-                    // will delete this once we decide on a packing strategy for line-pattern
-                    // const minTL = packUint8ToFloat(imageMin.tl[0], imageMin.tl[1]);
-                    // const minBR = packUint8ToFloat(imageMin.br[0], imageMin.br[1]);
-                    // const midTL = packUint8ToFloat(imageMid.tl[0], imageMid.tl[1]);
-                    // const midBR = packUint8ToFloat(imageMid.br[0], imageMid.br[1]);
-                    // const maxTL = packUint8ToFloat(imageMax.tl[0], imageMax.tl[1]);
-                    // const maxBR = packUint8ToFloat(imageMax.br[0], imageMax.br[1]);
-
-                    paintArray.reserve(length);
-                    const start = paintArray.length;
-                    for (let i = start; i < length; i++) {
-                        paintArray.emplaceBack(
-                            // minTL, minBR,
-                            // midTL, midBR,
-                            // maxTL, maxBR
-                            imageMin.tl[0], imageMin.tl[1], imageMin.br[0], imageMin.br[1],
-                            imageMid.tl[0], imageMid.tl[1], imageMid.br[0], imageMid.br[1],
-                            imageMax.tl[0], imageMax.tl[1], imageMax.br[0], imageMax.br[1]
-                        );
-                    }
-                }
-            }
-        }
-    }
     /**
      * Add two vertices to the buffers.
      *

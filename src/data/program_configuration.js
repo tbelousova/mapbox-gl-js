@@ -14,6 +14,7 @@ import type { CrossfadeParameters } from '../style/style_layer/line_style_layer'
 import type {StructArray, StructArrayMember} from '../util/struct_array';
 import type VertexBuffer from '../gl/vertex_buffer';
 import type Program from '../render/program';
+import type {ImagePosition} from '../render/image_atlas';
 import type {
     Feature,
     GlobalProperties,
@@ -76,8 +77,8 @@ interface Binder<T> {
                 program: Program,
                 globals: GlobalProperties,
                 currentValue: PossiblyEvaluatedPropertyValue<T>,
-                tile: Tile,
-                crossfade: CrossfadeParameters): void;
+                tile: ?Tile,
+                crossfade: ?CrossfadeParameters): void;
 }
 
 class ConstantBinder<T> implements Binder<T> {
@@ -89,7 +90,7 @@ class ConstantBinder<T> implements Binder<T> {
                 Program,
                 GlobalProperties,
                 PossiblyEvaluatedPropertyValue<T>,
-                Tile) => void;
+                ?Tile) => void;
 
 
     constructor(value: T, names: Array<string>, type: string) {
@@ -135,10 +136,10 @@ class PatternConstantBinder<T> extends ConstantBinder<T> {
                             program: Program,
                             globals: GlobalProperties,
                             currentValue: PossiblyEvaluatedPropertyValue<T>,
-                            tile: Tile) {
+                            tile: ?Tile) {
         const image: any = currentValue.constantOr(this.value);
         const gl = context.gl;
-        if (image && tile.iconAtlas) {
+        if (image && tile && tile.iconAtlas) {
             const imagePosMin = tile.iconAtlas.positions[image.min],
                 imagePosMid = tile.iconAtlas.positions[image.mid],
                 imagePosMax = tile.iconAtlas.positions[image.max];
@@ -170,12 +171,6 @@ class SourceExpressionBinder<T> implements Binder<T> {
     paintVertexArray: StructArray;
     paintVertexAttributes: Array<StructArrayMember>;
     paintVertexBuffer: ?VertexBuffer;
-    +setTileSpecificUniforms: (Context,
-                Program,
-                GlobalProperties,
-                PossiblyEvaluatedPropertyValue<T>,
-                Tile,
-                CrossfadeParameters) => void;
 
     constructor(expression: SourceExpression, names: Array<string>, type: string, layout: Class<StructArray>) {
         this.expression = expression;
@@ -244,41 +239,6 @@ class SourceExpressionBinder<T> implements Binder<T> {
     setTileSpecificUniforms() {}
 }
 
-class PatternSourceExpressionBinder<T> extends SourceExpressionBinder<T> {
-    constructor(expression: SourceExpression, names: Array<string>, type: string, layout: Class<StructArray>) {
-        super(expression, names, type, layout);
-        const PaintVertexArray = layout;
-        this.paintVertexAttributes = names.map((name) =>
-            ({
-                name: `a_${name}`,
-                type: 'Float32',
-                components: 4,
-                offset: 0
-            })
-        );
-        this.paintVertexArray = new PaintVertexArray();
-    }
-
-    setTileSpecificUniforms(context: Context,
-                            program: Program,
-                            globals: GlobalProperties,
-                            currentValue: PossiblyEvaluatedPropertyValue<T>,
-                            tile: Tile,
-                            crossfade: CrossfadeParameters) {
-        const gl = context.gl;
-        gl.uniform1f(program.uniforms.u_fade, crossfade.t);
-        gl.uniform1i(program.uniforms.u_zoomin, crossfade.fromScale === 2 ? 1 : 0);
-
-        // find a better way to determine pixel ratio of tile iconAtlas images
-        if (globals.tileRatio) gl.uniform4f(program.uniforms.u_scale, browser.devicePixelRatio > 1 ? 2 : 1, globals.tileRatio, crossfade.fromScale, crossfade.toScale);
-
-        gl.uniform1i(program.uniforms.u_image, 0);
-        context.activeTexture.set(gl.TEXTURE0);
-        tile.iconAtlasTexture.bind(gl.LINEAR, gl.CLAMP_TO_EDGE);
-        gl.uniform2fv(program.uniforms.u_texsize, tile.iconAtlasTexture.size);
-    }
-}
-
 class CompositeExpressionBinder<T> implements Binder<T> {
     expression: CompositeExpression;
     names: Array<string>;
@@ -290,6 +250,13 @@ class CompositeExpressionBinder<T> implements Binder<T> {
     paintVertexArray: StructArray;
     paintVertexAttributes: Array<StructArrayMember>;
     paintVertexBuffer: ?VertexBuffer;
+    +populatePaintArrays: (number, Feature, ?{[string]: ImagePosition}) => void;
+    +setTileSpecificUniforms: (Context,
+                Program,
+                GlobalProperties,
+                PossiblyEvaluatedPropertyValue<T>,
+                ?Tile,
+                ?CrossfadeParameters) => void;
 
     constructor(expression: CompositeExpression, names: Array<string>, type: string, useIntegerZoom: boolean, zoom: number, layout: Class<StructArray>) {
         this.expression = expression;
@@ -303,7 +270,7 @@ class CompositeExpressionBinder<T> implements Binder<T> {
             return {
                 name: `a_${name}`,
                 type: 'Float32',
-                components: type === 'color' || name.match(/pattern/) ? 4 : 2,
+                components: type === 'color' ? 4 : 2,
                 offset: 0
             };
         });
@@ -370,6 +337,83 @@ class CompositeExpressionBinder<T> implements Binder<T> {
     setTileSpecificUniforms() {}
 }
 
+class PatternCompositeExpressionBinder<T> extends CompositeExpressionBinder<T> {
+    constructor(expression: CompositeExpression, names: Array<string>, type: string, useIntegerZoom: boolean, zoom: number, layout: Class<StructArray>) {
+        super(expression, names, type, useIntegerZoom, zoom, layout);
+        const PaintVertexArray = layout;
+        this.paintVertexAttributes = names.map((name) =>
+            ({
+                name: `a_${name}`,
+                type: 'Float32',
+                components: 4,
+                offset: 0
+            })
+        );
+        this.paintVertexArray = new PaintVertexArray();
+    }
+
+    populatePaintArray(length: number, feature: Feature, imagePositions: ?{[string]: ImagePosition}) {
+        const paintArray = this.paintVertexArray;
+
+        const start = paintArray.length;
+        paintArray.reserve(length);
+
+        const min = this.expression.evaluate({zoom: this.zoom - 1}, feature);
+        const mid = this.expression.evaluate({zoom: this.zoom }, feature);
+        const max = this.expression.evaluate({zoom: this.zoom + 1}, feature);
+
+        if (imagePositions) {
+            const imageMin = imagePositions[min];
+            const imageMid = imagePositions[mid];
+            const imageMax = imagePositions[max];
+
+            if (!imageMin || !imageMid || !imageMax) return;
+            // will delete this once we decide on a packing strategy for line-pattern
+            // const minTL = packUint8ToFloat(imageMin.tl[0], imageMin.tl[1]);
+            // const minBR = packUint8ToFloat(imageMin.br[0], imageMin.br[1]);
+            // const midTL = packUint8ToFloat(imageMid.tl[0], imageMid.tl[1]);
+            // const midBR = packUint8ToFloat(imageMid.br[0], imageMid.br[1]);
+            // const maxTL = packUint8ToFloat(imageMax.tl[0], imageMax.tl[1]);
+            // const maxBR = packUint8ToFloat(imageMax.br[0], imageMax.br[1]);
+
+            for (let i = start; i < length; i++) {
+                paintArray.emplaceBack(
+                    // minTL, minBR,
+                    // midTL, midBR,
+                    // maxTL, maxBR
+                    imageMin.tl[0], imageMin.tl[1], imageMin.br[0], imageMin.br[1],
+                    imageMid.tl[0], imageMid.tl[1], imageMid.br[0], imageMid.br[1],
+                    imageMax.tl[0], imageMax.tl[1], imageMax.br[0], imageMax.br[1]
+                );
+            }
+        }
+    }
+
+    setTileSpecificUniforms(context: Context,
+                            program: Program,
+                            globals: GlobalProperties,
+                            currentValue: PossiblyEvaluatedPropertyValue<T>,
+                            tile: ?Tile,
+                            crossfade: ?CrossfadeParameters) {
+
+        if (tile && crossfade) {
+            const gl = context.gl;
+            gl.uniform1f(program.uniforms.u_fade, crossfade.t);
+            gl.uniform1i(program.uniforms.u_zoomin, crossfade.fromScale === 2 ? 1 : 0);
+
+            // find a better way to determine pixel ratio of tile iconAtlas images
+            if (globals.tileRatio) gl.uniform4f(program.uniforms.u_scale, browser.devicePixelRatio > 1 ? 2 : 1, globals.tileRatio, crossfade.fromScale, crossfade.toScale);
+
+            gl.uniform1i(program.uniforms.u_image, 0);
+            context.activeTexture.set(gl.TEXTURE0);
+            tile.iconAtlasTexture.bind(gl.LINEAR, gl.CLAMP_TO_EDGE);
+            gl.uniform2fv(program.uniforms.u_texsize, tile.iconAtlasTexture.size);
+        }
+    }
+
+    setUniforms() {}
+}
+
 /**
  * ProgramConfiguration contains the logic for binding style layer properties and tile
  * layer feature data into GL program uniforms and vertex attributes.
@@ -427,7 +471,7 @@ export default class ProgramConfiguration {
                 keys.push(`/u_${property}`);
             } else if (property.match(/line-pattern/)) {
                 const structArrayLayout = layoutType(property, type, 'source');
-                self.binders[property] = new PatternSourceExpressionBinder(value.value, names, type, structArrayLayout);
+                self.binders[property] = new PatternCompositeExpressionBinder(value.value, names, type, useIntegerZoom, zoom, structArrayLayout);
                 keys.push(`/p_${property}`);
             } else if (value.value.kind === 'source') {
                 const structArrayLayout = layoutType(property, type, 'source');
@@ -445,12 +489,14 @@ export default class ProgramConfiguration {
         return self;
     }
 
-    populatePaintArrays(length: number, feature: Feature) {
+    populatePaintArrays(length: number, feature: Feature, imagePositions: ?{[string]: ImagePosition}) {
         for (const property in this.binders) {
-            // binders for properties with layout exceptions populate their paint arrays in the
-            // bucket because they have multiple attributes and property-specific population code
-            if (getLayoutException(property)) continue;
-            this.binders[property].populatePaintArray(length, feature);
+            const binder = this.binders[property];
+            if (binder instanceof PatternCompositeExpressionBinder) {
+                binder.populatePaintArray(length, feature, imagePositions);
+            } else {
+                binder.populatePaintArray(length, feature);
+            }
         }
     }
 
@@ -469,14 +515,10 @@ export default class ProgramConfiguration {
         }
     }
 
-    setTileSpecificUniforms<Properties: Object>(context: Context, program: Program, properties: PossiblyEvaluated<Properties>, globals: GlobalProperties, tile: Tile, crossfade: CrossfadeParameters) {
+    setTileSpecificUniforms<Properties: Object>(context: Context, program: Program, properties: PossiblyEvaluated<Properties>, globals: GlobalProperties, tile: ?Tile, crossfade: ?CrossfadeParameters) {
         for (const property in this.binders) {
             const binder = this.binders[property];
-            if (binder instanceof PatternConstantBinder) {
-                binder.setTileSpecificUniforms(context, program, globals, properties.get(property), tile);
-            } else if (binder instanceof PatternSourceExpressionBinder) {
-                binder.setTileSpecificUniforms(context, program, globals, properties.get(property), tile, crossfade);
-            }
+            binder.setTileSpecificUniforms(context, program, globals, properties.get(property), tile, crossfade);
         }
     }
 
@@ -494,7 +536,7 @@ export default class ProgramConfiguration {
             const binder = this.binders[property];
             if ((binder instanceof SourceExpressionBinder ||
                 binder instanceof CompositeExpressionBinder ||
-                binder instanceof PatternSourceExpressionBinder) &&
+                binder instanceof PatternCompositeExpressionBinder) &&
                 binder.paintVertexBuffer
             ) {
                 buffers.push(binder.paintVertexBuffer);
@@ -521,9 +563,9 @@ export class ProgramConfigurationSet<Layer: TypedStyleLayer> {
         }
     }
 
-    populatePaintArrays(length: number, feature: Feature) {
+    populatePaintArrays(length: number, feature: Feature, imagePositions: ?{[string]: ImagePosition}) {
         for (const key in this.programConfigurations) {
-            this.programConfigurations[key].populatePaintArrays(length, feature);
+            this.programConfigurations[key].populatePaintArrays(length, feature, imagePositions);
         }
     }
 
@@ -595,7 +637,7 @@ function layoutType(property, type, binderType) {
 register('ConstantBinder', ConstantBinder);
 register('PatternConstantBinder', PatternConstantBinder);
 register('SourceExpressionBinder', SourceExpressionBinder);
-register('PatternSourceExpressionBinder', PatternSourceExpressionBinder);
+register('PatternCompositeExpressionBinder', PatternCompositeExpressionBinder);
 register('CompositeExpressionBinder', CompositeExpressionBinder);
 register('ProgramConfiguration', ProgramConfiguration, {omit: ['_buffers']});
 register('ProgramConfigurationSet', ProgramConfigurationSet);
