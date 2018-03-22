@@ -66,7 +66,6 @@ interface Binder<T> {
     destroy(): void;
 
     defines(): Array<string>;
-    isDataDriven(): boolean;
 
     setUniforms(context: Context,
                 program: Program,
@@ -96,10 +95,6 @@ class ConstantBinder<T> implements Binder<T> {
 
     defines() {
         return this.names.map(name => `#define HAS_UNIFORM_u_${name}`);
-    }
-
-    isDataDriven() {
-        return false;
     }
 
     populatePaintArray() {}
@@ -140,10 +135,6 @@ class PatternConstantBinder<T> implements Binder<T> {
 
     defines() {
         return this.names.map(name => `#define HAS_UNIFORM_u_${name}`);
-    }
-
-    isDataDriven() {
-        return false;
     }
 
     populatePaintArray() {}
@@ -208,10 +199,6 @@ class SourceExpressionBinder<T> implements Binder<T> {
 
     defines() {
         return [];
-    }
-
-    isDataDriven() {
-        return true;
     }
 
     populatePaintArray(length: number, feature: Feature) {
@@ -288,10 +275,6 @@ class CompositeExpressionBinder<T> implements Binder<T> {
 
     defines() {
         return [];
-    }
-
-    isDataDriven() {
-        return true;
     }
 
     populatePaintArray(length: number, feature: Feature) {
@@ -383,10 +366,6 @@ class PatternCompositeExpressionBinder<T> implements Binder<T> {
 
     defines() {
         return [];
-    }
-
-    isDataDriven() {
-        return true;
     }
 
     populatePaintArray(length: number, feature: Feature, imagePositions: ?{[string]: ImagePosition}) {
