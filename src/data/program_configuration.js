@@ -140,17 +140,16 @@ class PatternConstantBinder<T> extends ConstantBinder<T> {
         const image: any = currentValue.constantOr(this.value);
         const gl = context.gl;
         if (image && tile && tile.iconAtlas) {
-            const imagePosMin = tile.iconAtlas.positions[image.min],
-                imagePosMid = tile.iconAtlas.positions[image.mid],
-                imagePosMax = tile.iconAtlas.positions[image.max];
-            if (!imagePosMin || !imagePosMid || !imagePosMax) return;
-            gl.uniform4fv(program.uniforms.u_pattern_min, (imagePosMin: any).tl.concat((imagePosMin: any).br));
-            gl.uniform4fv(program.uniforms.u_pattern_mid, (imagePosMid: any).tl.concat((imagePosMid: any).br));
-            gl.uniform4fv(program.uniforms.u_pattern_max, (imagePosMax: any).tl.concat((imagePosMax: any).br));
+            const imagePosFrom = tile.iconAtlas.positions[image.from],
+                imagePosTo = tile.iconAtlas.positions[image.to];
+            if (!imagePosFrom || !imagePosTo) return;
+
+            gl.uniform4fv(program.uniforms.u_pattern_from, (imagePosFrom: any).tl.concat((imagePosFrom: any).br));
+            gl.uniform4fv(program.uniforms.u_pattern_to, (imagePosTo: any).tl.concat((imagePosTo: any).br));
+
             // this assumes all images in the icon atlas texture have the same pixel ratio
-            if (globals.tileRatio) gl.uniform4f(program.uniforms.u_scale, imagePosMid.pixelRatio, globals.tileRatio, image.fromScale, image.toScale);
+            if (globals.tileRatio) gl.uniform4f(program.uniforms.u_scale, imagePosTo.pixelRatio, globals.tileRatio, image.fromScale, image.toScale);
             gl.uniform1f(program.uniforms.u_fade, image.t);
-            gl.uniform1i(program.uniforms.u_zoomin, image.fromScale === 2 ? 1 : 0);
 
             gl.uniform1i(program.uniforms.u_image, 0);
             context.activeTexture.set(gl.TEXTURE0);
@@ -338,6 +337,13 @@ class CompositeExpressionBinder<T> implements Binder<T> {
 }
 
 class PatternCompositeExpressionBinder<T> extends CompositeExpressionBinder<T> {
+    zoomInPaintVertexArray: StructArray;
+    zoomOutPaintVertexArray: StructArray;
+    zoomInPaintVertexBuffer: ?VertexBuffer;
+    zoomOutPaintVertexBuffer: ?VertexBuffer;
+    uploadedBuffer: boolean;
+
+
     constructor(expression: CompositeExpression, names: Array<string>, type: string, useIntegerZoom: boolean, zoom: number, layout: Class<StructArray>) {
         super(expression, names, type, useIntegerZoom, zoom, layout);
         const PaintVertexArray = layout;
@@ -349,44 +355,66 @@ class PatternCompositeExpressionBinder<T> extends CompositeExpressionBinder<T> {
                 offset: 0
             })
         );
-        this.paintVertexArray = new PaintVertexArray();
+
+        this.zoomInPaintVertexArray = new PaintVertexArray();
+        this.zoomOutPaintVertexArray = new PaintVertexArray();
+        // this.paintVertexArray = new PaintVertexArray();
     }
 
     populatePaintArray(length: number, feature: Feature, imagePositions: ?{[string]: ImagePosition}) {
-        const paintArray = this.paintVertexArray;
+        // We populate two paint arrays because, for cross-faded properties, we don't know which direction
+        // we're cross-fading to at layout time. In order to keep vertex attributes to a minimum and not pass
+        // unnecessary vertex data to the shaders, we determine which to upload at draw time.
 
-        const start = paintArray.length;
-        paintArray.reserve(length);
+        const zoomInArray = this.zoomInPaintVertexArray;
+        const zoomOutArray = this.zoomOutPaintVertexArray;
+
+        const start = zoomInArray.length;
+
+        zoomInArray.reserve(length);
+        zoomOutArray.reserve(length);
 
         const min = this.expression.evaluate({zoom: this.zoom - 1}, feature);
         const mid = this.expression.evaluate({zoom: this.zoom }, feature);
         const max = this.expression.evaluate({zoom: this.zoom + 1}, feature);
-
         if (imagePositions) {
             const imageMin = imagePositions[min];
             const imageMid = imagePositions[mid];
             const imageMax = imagePositions[max];
 
             if (!imageMin || !imageMid || !imageMax) return;
-            // will delete this once we decide on a packing strategy for line-pattern
-            // const minTL = packUint8ToFloat(imageMin.tl[0], imageMin.tl[1]);
-            // const minBR = packUint8ToFloat(imageMin.br[0], imageMin.br[1]);
-            // const midTL = packUint8ToFloat(imageMid.tl[0], imageMid.tl[1]);
-            // const midBR = packUint8ToFloat(imageMid.br[0], imageMid.br[1]);
-            // const maxTL = packUint8ToFloat(imageMax.tl[0], imageMax.tl[1]);
-            // const maxBR = packUint8ToFloat(imageMax.br[0], imageMax.br[1]);
 
             for (let i = start; i < length; i++) {
-                paintArray.emplaceBack(
-                    // minTL, minBR,
-                    // midTL, midBR,
-                    // maxTL, maxBR
-                    imageMin.tl[0], imageMin.tl[1], imageMin.br[0], imageMin.br[1],
+                zoomInArray.emplaceBack(
+                    imageMid.tl[0], imageMid.tl[1], imageMid.br[0], imageMid.br[1],
+                    imageMin.tl[0], imageMin.tl[1], imageMin.br[0], imageMin.br[1]
+                );
+
+                zoomOutArray.emplaceBack(
                     imageMid.tl[0], imageMid.tl[1], imageMid.br[0], imageMid.br[1],
                     imageMax.tl[0], imageMax.tl[1], imageMax.br[0], imageMax.br[1]
                 );
             }
         }
+    }
+
+    getVertexBuffer(crossfade: CrossfadeParameters) {
+        if (this.zoomOutPaintVertexBuffer && this.zoomInPaintVertexBuffer) {
+            return crossfade.fromScale === 2 ? this.zoomInPaintVertexBuffer : this.zoomOutPaintVertexBuffer;
+        }
+    }
+
+    upload(context: Context) {
+        if (this.zoomInPaintVertexArray && this.zoomOutPaintVertexArray) {
+            this.zoomInPaintVertexBuffer = context.createVertexBuffer(this.zoomInPaintVertexArray, this.paintVertexAttributes);
+            this.zoomOutPaintVertexBuffer = context.createVertexBuffer(this.zoomOutPaintVertexArray, this.paintVertexAttributes);
+        }
+    }
+
+    destroy() {
+        if (this.zoomOutPaintVertexBuffer) this.zoomOutPaintVertexBuffer.destroy();
+        if (this.zoomInPaintVertexBuffer) this.zoomInPaintVertexBuffer.destroy();
+
     }
 
     setTileSpecificUniforms(context: Context,
@@ -444,7 +472,6 @@ export default class ProgramConfiguration {
     constructor() {
         this.binders = {};
         this.cacheKey = '';
-
         this._buffers = [];
     }
 
@@ -526,6 +553,25 @@ export default class ProgramConfiguration {
         return this._buffers;
     }
 
+    updatePatternPaintBuffers(crossfade: CrossfadeParameters) {
+        const buffers = [];
+
+        for (const property in this.binders) {
+            const binder = this.binders[property];
+            if (binder instanceof PatternCompositeExpressionBinder) {
+                const patternVertexBuffer = binder.getVertexBuffer(crossfade);
+                if (patternVertexBuffer) buffers.push(patternVertexBuffer);
+            } else if ((binder instanceof SourceExpressionBinder ||
+                binder instanceof CompositeExpressionBinder) &&
+                binder.paintVertexBuffer
+            ) {
+                buffers.push(binder.paintVertexBuffer);
+            }
+        }
+
+        this._buffers = buffers;
+    }
+
     upload(context: Context) {
         for (const property in this.binders) {
             this.binders[property].upload(context);
@@ -535,13 +581,13 @@ export default class ProgramConfiguration {
         for (const property in this.binders) {
             const binder = this.binders[property];
             if ((binder instanceof SourceExpressionBinder ||
-                binder instanceof CompositeExpressionBinder ||
-                binder instanceof PatternCompositeExpressionBinder) &&
+                binder instanceof CompositeExpressionBinder) &&
                 binder.paintVertexBuffer
             ) {
                 buffers.push(binder.paintVertexBuffer);
             }
         }
+
         this._buffers = buffers;
     }
 
@@ -600,7 +646,7 @@ function paintAttributeName(property, type) {
         'text-halo-width': ['halo_width'],
         'icon-halo-width': ['halo_width'],
         'line-gap-width': ['gapwidth'],
-        'line-pattern': ['pattern_min', 'pattern_mid', 'pattern_max']
+        'line-pattern': ['pattern_to', 'pattern_from']
     };
     return attributeNameExceptions[property] ||
         [property.replace(`${type}-`, '').replace(/-/g, '_')];

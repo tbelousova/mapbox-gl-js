@@ -30,7 +30,6 @@ export default function drawLine(painter: Painter, sourceCache: SourceCache, lay
 
     let prevTileZoom;
     let firstTile = true;
-
     for (const coord of coords) {
         const tile = sourceCache.getTile(coord);
         const bucket: ?LineBucket = (tile.getBucket(layer): any);
@@ -57,13 +56,14 @@ function drawLineTile(program, painter, tile, bucket, layer, coord, programConfi
     const dasharray = layer.paint.get('line-dasharray');
     let posA, posB;
     const tileRatio = 1 / pixelsToTileUnits(tile, 1, painter.transform.tileZoom);
+    const crossfade = layer.getCrossfadeParameters();
+    programConfiguration.updatePatternPaintBuffers(crossfade);
     programConfiguration.setTileSpecificUniforms(painter.context,
                                                  program,
                                                  layer.paint,
                                                  {zoom: painter.transform.zoom, tileRatio: tileRatio},
                                                  tile,
-                                                 layer.getCrossfadeParameters());
-
+                                                 crossfade);
     if (programChanged || tileRatioChanged) {
         if (dasharray) {
             posA = painter.lineAtlas.getDash(dasharray.from, layer.layout.get('line-cap') === 'round');
@@ -94,7 +94,6 @@ function drawLineTile(program, painter, tile, bucket, layer, coord, programConfi
 
     const posMatrix = painter.translatePosMatrix(coord.posMatrix, tile, layer.paint.get('line-translate'), layer.paint.get('line-translate-anchor'));
     gl.uniformMatrix4fv(program.uniforms.u_matrix, false, posMatrix);
-
     gl.uniform1f(program.uniforms.u_ratio, 1 / pixelsToTileUnits(tile, 1, painter.transform.zoom));
 
     if (layer.paint.get('line-gradient')) {
