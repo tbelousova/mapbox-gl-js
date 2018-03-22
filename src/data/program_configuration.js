@@ -86,12 +86,6 @@ class ConstantBinder<T> implements Binder<T> {
     names: Array<string>;
     type: string;
     statistics: { max: number };
-    +setTileSpecificUniforms: (Context,
-                Program,
-                GlobalProperties,
-                PossiblyEvaluatedPropertyValue<T>,
-                ?Tile) => void;
-
 
     constructor(value: T, names: Array<string>, type: string) {
         this.value = value;
@@ -131,7 +125,31 @@ class ConstantBinder<T> implements Binder<T> {
 
 }
 
-class PatternConstantBinder<T> extends ConstantBinder<T> {
+class PatternConstantBinder<T> implements Binder<T> {
+    value: T;
+    names: Array<string>;
+    type: string;
+    statistics: { max: number };
+
+    constructor(value: T, names: Array<string>, type: string) {
+        this.value = value;
+        this.names = names;
+        this.type = type;
+        this.statistics = { max: -Infinity };
+    }
+
+    defines() {
+        return this.names.map(name => `#define HAS_UNIFORM_u_${name}`);
+    }
+
+    isDataDriven() {
+        return false;
+    }
+
+    populatePaintArray() {}
+    upload() {}
+    destroy() {}
+
     setTileSpecificUniforms(context: Context,
                             program: Program,
                             globals: GlobalProperties,
@@ -204,7 +222,6 @@ class SourceExpressionBinder<T> implements Binder<T> {
 
         const value = this.expression.evaluate({zoom: 0}, feature);
 
-        // figure out how to design this for atypical paint properties with multiple attributes
         if (this.type === 'color') {
             const color = packColor(value);
             for (let i = start; i < length; i++) {
@@ -249,13 +266,6 @@ class CompositeExpressionBinder<T> implements Binder<T> {
     paintVertexArray: StructArray;
     paintVertexAttributes: Array<StructArrayMember>;
     paintVertexBuffer: ?VertexBuffer;
-    +populatePaintArrays: (number, Feature, ?{[string]: ImagePosition}) => void;
-    +setTileSpecificUniforms: (Context,
-                Program,
-                GlobalProperties,
-                PossiblyEvaluatedPropertyValue<T>,
-                ?Tile,
-                ?CrossfadeParameters) => void;
 
     constructor(expression: CompositeExpression, names: Array<string>, type: string, useIntegerZoom: boolean, zoom: number, layout: Class<StructArray>) {
         this.expression = expression;
@@ -293,7 +303,6 @@ class CompositeExpressionBinder<T> implements Binder<T> {
         const min = this.expression.evaluate({zoom: this.zoom    }, feature);
         const max = this.expression.evaluate({zoom: this.zoom + 1}, feature);
 
-        // figure out how to design this for atypical paint properties with multiple attributes
         if (this.type === 'color') {
             const minColor = packColor(min);
             const maxColor = packColor(max);
@@ -336,17 +345,29 @@ class CompositeExpressionBinder<T> implements Binder<T> {
     setTileSpecificUniforms() {}
 }
 
-class PatternCompositeExpressionBinder<T> extends CompositeExpressionBinder<T> {
+class PatternCompositeExpressionBinder<T> implements Binder<T> {
+    expression: CompositeExpression;
+    names: Array<string>;
+    type: string;
+    useIntegerZoom: boolean;
+    zoom: number;
+    statistics: { max: number };
+
     zoomInPaintVertexArray: StructArray;
     zoomOutPaintVertexArray: StructArray;
     zoomInPaintVertexBuffer: ?VertexBuffer;
     zoomOutPaintVertexBuffer: ?VertexBuffer;
-    uploadedBuffer: boolean;
+    paintVertexAttributes: Array<StructArrayMember>;
 
+    constructor(expression: CompositeExpression, names: Array<string>, type: string, useIntegerZoom: boolean, zoom: number, PaintVertexArray: Class<StructArray>) {
 
-    constructor(expression: CompositeExpression, names: Array<string>, type: string, useIntegerZoom: boolean, zoom: number, layout: Class<StructArray>) {
-        super(expression, names, type, useIntegerZoom, zoom, layout);
-        const PaintVertexArray = layout;
+        this.expression = expression;
+        this.names = names;
+        this.type = type;
+        this.useIntegerZoom = useIntegerZoom;
+        this.zoom = zoom;
+        this.statistics = { max: -Infinity };
+
         this.paintVertexAttributes = names.map((name) =>
             ({
                 name: `a_${name}`,
@@ -358,7 +379,14 @@ class PatternCompositeExpressionBinder<T> extends CompositeExpressionBinder<T> {
 
         this.zoomInPaintVertexArray = new PaintVertexArray();
         this.zoomOutPaintVertexArray = new PaintVertexArray();
-        // this.paintVertexArray = new PaintVertexArray();
+    }
+
+    defines() {
+        return [];
+    }
+
+    isDataDriven() {
+        return true;
     }
 
     populatePaintArray(length: number, feature: Feature, imagePositions: ?{[string]: ImagePosition}) {
@@ -632,7 +660,6 @@ export class ProgramConfigurationSet<Layer: TypedStyleLayer> {
     }
 }
 
-// paint property arrays
 function paintAttributeName(property, type) {
     const attributeNameExceptions = {
         'text-opacity': ['opacity'],
