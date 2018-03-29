@@ -61,7 +61,7 @@ interface Binder<T> {
     statistics: { max: number };
     paintVertexArray?: StructArray;
 
-    populatePaintArray(length: number, feature: Feature): void;
+    populatePaintArray(length: number, feature: Feature, imagePositions: {[string]: ImagePosition}): void;
     upload(Context): void;
     destroy(): void;
 
@@ -76,7 +76,7 @@ interface Binder<T> {
                 program: Program,
                 globals: GlobalProperties,
                 currentValue: PossiblyEvaluatedPropertyValue<T>,
-                tile: ?Tile,
+                tile: Tile,
                 crossfade: ?CrossfadeParameters): void;
 }
 
@@ -368,7 +368,7 @@ class PatternCompositeExpressionBinder<T> implements Binder<T> {
         return [];
     }
 
-    populatePaintArray(length: number, feature: Feature, imagePositions: ?{[string]: ImagePosition}) {
+    populatePaintArray(length: number, feature: Feature, imagePositions: {[string]: ImagePosition}) {
         // We populate two paint arrays because, for cross-faded properties, we don't know which direction
         // we're cross-fading to at layout time. In order to keep vertex attributes to a minimum and not pass
         // unnecessary vertex data to the shaders, we determine which to upload at draw time.
@@ -523,13 +523,13 @@ export default class ProgramConfiguration {
         return self;
     }
 
-    populatePaintArrays(length: number, feature: Feature, imagePositions: ?{[string]: ImagePosition}) {
+    populatePaintArrays(length: number, feature: Feature, imagePositions: {[string]: ImagePosition}) {
         for (const property in this.binders) {
             const binder = this.binders[property];
             if (binder instanceof PatternCompositeExpressionBinder) {
                 binder.populatePaintArray(length, feature, imagePositions);
             } else {
-                binder.populatePaintArray(length, feature);
+                binder.populatePaintArray(length, feature, {});
             }
         }
     }
@@ -549,7 +549,7 @@ export default class ProgramConfiguration {
         }
     }
 
-    setTileSpecificUniforms<Properties: Object>(context: Context, program: Program, properties: PossiblyEvaluated<Properties>, globals: GlobalProperties, tile: ?Tile, crossfade: ?CrossfadeParameters) {
+    setTileSpecificUniforms<Properties: Object>(context: Context, program: Program, properties: PossiblyEvaluated<Properties>, globals: GlobalProperties, tile: Tile, crossfade: CrossfadeParameters) {
         for (const property in this.binders) {
             const binder = this.binders[property];
             binder.setTileSpecificUniforms(context, program, globals, properties.get(property), tile, crossfade);
@@ -616,7 +616,7 @@ export class ProgramConfigurationSet<Layer: TypedStyleLayer> {
         }
     }
 
-    populatePaintArrays(length: number, feature: Feature, imagePositions: ?{[string]: ImagePosition}) {
+    populatePaintArrays(length: number, feature: Feature, imagePositions: {[string]: ImagePosition}) {
         for (const key in this.programConfigurations) {
             this.programConfigurations[key].populatePaintArrays(length, feature, imagePositions);
         }

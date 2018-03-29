@@ -147,7 +147,7 @@ class FillBucket implements Bucket {
             triangleSegment.primitiveLength += indices.length / 3;
         }
 
-        this.programConfigurations.populatePaintArrays(this.layoutVertexArray.length, feature);
+        this.programConfigurations.populatePaintArrays(this.layoutVertexArray.length, feature, {});
     }
 }
 
