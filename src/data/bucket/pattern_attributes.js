@@ -1,3 +1,4 @@
+// @flow
 import { createLayout } from '../../util/struct_array';
 
 export default createLayout([
