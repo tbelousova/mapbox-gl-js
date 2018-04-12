@@ -4,7 +4,7 @@ import { packUint8ToFloat } from '../shaders/encode_attribute';
 import Color from '../style-spec/util/color';
 import { register } from '../util/web_worker_transfer';
 import { PossiblyEvaluatedPropertyValue } from '../style/properties';
-import { StructArrayLayout1f4, StructArrayLayout2f8, StructArrayLayout4f16, LinePatternLayoutArray } from './array_types';
+import { StructArrayLayout1f4, StructArrayLayout2f8, StructArrayLayout4f16, PatternLayoutArray } from './array_types';
 import browser from '../util/browser';
 
 import type Tile from '../source/tile';
@@ -661,8 +661,8 @@ function paintAttributeName(property, type) {
 function getLayoutException(property) {
     const propertyExceptions = {
         'line-pattern':{
-            'source': LinePatternLayoutArray,
-            'composite': LinePatternLayoutArray
+            'source': PatternLayoutArray,
+            'composite': PatternLayoutArray
         }
     };
 
