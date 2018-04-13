@@ -55,7 +55,6 @@ class CircleBucket<Layer: CircleStyleLayer | HeatmapStyleLayer> implements Bucke
     programConfigurations: ProgramConfigurationSet<Layer>;
     segments: SegmentVector;
     uploaded: boolean;
-    changed: boolean;
 
     constructor(options: BucketParameters<Layer>) {
         this.zoom = options.zoom;
@@ -82,7 +81,7 @@ class CircleBucket<Layer: CircleStyleLayer | HeatmapStyleLayer> implements Bucke
 
     update(states: FeatureStates, vtLayer: VectorTileLayer) {
         if (!this.stateDependentLayers.length) return;
-        this.changed = this.programConfigurations.updatePaintArrays(states, vtLayer, this.stateDependentLayers);
+        this.programConfigurations.updatePaintArrays(states, vtLayer, this.stateDependentLayers);
     }
 
     isEmpty() {
@@ -90,7 +89,7 @@ class CircleBucket<Layer: CircleStyleLayer | HeatmapStyleLayer> implements Bucke
     }
 
     uploadPending() {
-        return !this.uploaded || this.changed;
+        return !this.uploaded || this.programConfigurations.needsUpload;
     }
 
     upload(context: Context) {
@@ -100,7 +99,6 @@ class CircleBucket<Layer: CircleStyleLayer | HeatmapStyleLayer> implements Bucke
         }
         this.programConfigurations.upload(context);
         this.uploaded = true;
-        this.changed = false;
     }
 
     destroy() {
