@@ -18,7 +18,6 @@ import Anchor from '../../symbol/anchor';
 import { getSizeData } from '../../symbol/symbol_size';
 import { register } from '../../util/web_worker_transfer';
 
-import type {Feature as ExpressionFeature} from '../../style-spec/expression';
 import type {
     Bucket,
     BucketParameters,
@@ -456,7 +455,7 @@ class SymbolBucket implements Bucket {
                sizeVertex: any,
                lineOffset: [number, number],
                alongLine: boolean,
-               feature: ExpressionFeature,
+               feature: SymbolFeature,
                writingMode: any,
                labelAnchor: Anchor,
                lineStartIndex: number,
@@ -503,7 +502,7 @@ class SymbolBucket implements Bucket {
             lineOffset[0], lineOffset[1],
             writingMode, (false: any));
 
-        arrays.programConfigurations.populatePaintArrays(arrays.layoutVertexArray.length, feature);
+        arrays.programConfigurations.populatePaintArrays(arrays.layoutVertexArray.length, feature, feature.index);
     }
 
     _addCollisionDebugVertex(layoutVertexArray: StructArray, collisionVertexArray: StructArray, point: Point, anchor: Point, extrude: Point) {
