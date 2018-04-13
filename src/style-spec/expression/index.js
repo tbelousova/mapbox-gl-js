@@ -119,11 +119,13 @@ export function createExpression(expression: mixed, propertySpec: StylePropertyS
 
 export class ZoomConstantExpression<Kind> {
     kind: Kind;
+    isStateDependent: boolean;
     _styleExpression: StyleExpression;
 
     constructor(kind: Kind, expression: StyleExpression) {
         this.kind = kind;
         this._styleExpression = expression;
+        this.isStateDependent = kind !== 'constant' && !isConstant.isStateConstant(expression.expression);
     }
 
     evaluateWithoutErrorHandling(globals: GlobalProperties, feature?: Feature): any {
@@ -138,6 +140,7 @@ export class ZoomConstantExpression<Kind> {
 export class ZoomDependentExpression<Kind> {
     kind: Kind;
     zoomStops: Array<number>;
+    isStateDependent: boolean;
 
     _styleExpression: StyleExpression;
     _interpolationType: ?InterpolationType;
@@ -146,6 +149,7 @@ export class ZoomDependentExpression<Kind> {
         this.kind = kind;
         this.zoomStops = zoomCurve.labels;
         this._styleExpression = expression;
+        this.isStateDependent = kind !== 'camera' && !isConstant.isStateConstant(expression.expression);
         if (zoomCurve instanceof Interpolate) {
             this._interpolationType = zoomCurve.interpolation;
         }
@@ -175,6 +179,7 @@ export type ConstantExpression = {
 
 export type SourceExpression = {
     kind: 'source',
+    isStateDependent: boolean,
     +evaluate: (globals: GlobalProperties, feature?: Feature) => any,
 };
 
@@ -187,6 +192,7 @@ export type CameraExpression = {
 
 export type CompositeExpression = {
     kind: 'composite',
+    isStateDependent: boolean,
     +evaluate: (globals: GlobalProperties, feature?: Feature) => any,
     +interpolationFactor: (input: number, lower: number, upper: number) => number,
     zoomStops: Array<number>
