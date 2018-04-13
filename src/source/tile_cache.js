@@ -1,5 +1,7 @@
 // @flow
 
+import { OverscaledTileID } from './tile_id';
+
 /**
  * A [least-recently-used cache](http://en.wikipedia.org/wiki/Cache_algorithms)
  * with hash lookup made possible by keeping a list of keys in parallel to
@@ -7,10 +9,10 @@
  *
  * @private
  */
-class LRUCache<T> {
+class TileCache<T> {
     max: number;
-    data: {[key: string]: Array<T>};
-    order: Array<string>;
+    data: {[key: number | string]: Array<{ value: T, timeout: ?TimeoutID}>};
+    order: Array<number>;
     onRemove: (element: T) => void;
     /**
      * @param {number} max number of permitted values
@@ -25,13 +27,14 @@ class LRUCache<T> {
     /**
      * Clear the cache
      *
-     * @returns {LRUCache} this cache
+     * @returns {TileCache} this cache
      * @private
      */
     reset() {
         for (const key in this.data) {
             for (const removedData of this.data[key]) {
-                this.onRemove(removedData);
+                if (removedData.timeout) clearTimeout(removedData.timeout);
+                this.onRemove(removedData.value);
             }
         }
 
@@ -45,21 +48,34 @@ class LRUCache<T> {
      * Add a key, value combination to the cache, trimming its size if this pushes
      * it over max length.
      *
-     * @param {string} key lookup key for the item
+     * @param {OverscaledTileID} key lookup key for the item
      * @param {*} data any value
      *
-     * @returns {LRUCache} this cache
+     * @returns {TileCache} this cache
      * @private
      */
-    add(key: string, data: T) {
+    add(tileID: OverscaledTileID, data: T, expiryTimeout: number | void) {
+        const key = tileID.wrapped().key;
         if (this.data[key] === undefined) {
             this.data[key] = [];
         }
-        this.data[key].push(data);
+
+        const dataWrapper = {
+            value: data,
+            timeout: undefined
+        };
+
+        if (expiryTimeout !== undefined) {
+            dataWrapper.timeout = setTimeout(() => {
+                this.remove(tileID, dataWrapper);
+            }, expiryTimeout);
+        }
+
+        this.data[key].push(dataWrapper);
         this.order.push(key);
 
         if (this.order.length > this.max) {
-            const removedData = this.getAndRemove(this.order[0]);
+            const removedData = this._getAndRemoveByKey(this.order[0]);
             if (removedData) this.onRemove(removedData);
         }
 
@@ -69,21 +85,21 @@ class LRUCache<T> {
     /**
      * Determine whether the value attached to `key` is present
      *
-     * @param {string} key the key to be looked-up
+     * @param {OverscaledTileID} key the key to be looked-up
      * @returns {boolean} whether the cache has this value
      * @private
      */
-    has(key: string): boolean {
-        return key in this.data;
+    has(tileID: OverscaledTileID): boolean {
+        return tileID.wrapped().key in this.data;
     }
 
     /**
      * List all keys in the cache
      *
-     * @returns {Array<string>} an array of keys in this cache.
+     * @returns {Array<number>} an array of keys in this cache.
      * @private
      */
-    keys(): Array<string> {
+    keys(): Array<number> {
         return this.order;
     }
 
@@ -91,53 +107,65 @@ class LRUCache<T> {
      * Get the value attached to a specific key and remove data from cache.
      * If the key is not found, returns `null`
      *
-     * @param {string} key the key to look up
+     * @param {OverscaledTileID} key the key to look up
      * @returns {*} the data, or null if it isn't found
      * @private
      */
-    getAndRemove(key: string): ?T {
-        if (!this.has(key)) { return null; }
+    getAndRemove(tileID: OverscaledTileID): ?T {
+        if (!this.has(tileID)) { return null; }
+        return this._getAndRemoveByKey(tileID.wrapped().key);
+    }
 
+    /*
+     * Get and remove the value with the specified key.
+     */
+    _getAndRemoveByKey(key: number): ?T {
         const data = this.data[key].shift();
+        if (data.timeout) clearTimeout(data.timeout);
 
         if (this.data[key].length === 0) {
             delete this.data[key];
         }
         this.order.splice(this.order.indexOf(key), 1);
 
-        return data;
+        return data.value;
     }
 
     /**
      * Get the value attached to a specific key without removing data
      * from the cache. If the key is not found, returns `null`
      *
-     * @param {string} key the key to look up
+     * @param {OverscaledTileID} key the key to look up
      * @returns {*} the data, or null if it isn't found
      * @private
      */
-    get(key: string): ?T {
-        if (!this.has(key)) { return null; }
+    get(tileID: OverscaledTileID): ?T {
+        if (!this.has(tileID)) { return null; }
 
-        const data = this.data[key][0];
-        return data;
+        const data = this.data[tileID.wrapped().key][0];
+        return data.value;
     }
 
     /**
      * Remove a key/value combination from the cache.
      *
-     * @param {string} key the key for the pair to delete
-     * @returns {LRUCache} this cache
+     * @param {OverscaledTileID} key the key for the pair to delete
+     * @param {T} value If a value is provided, remove that exact version of the value.
+     * @returns {TileCache} this cache
      * @private
      */
-    remove(key: string) {
-        if (!this.has(key)) { return this; }
+    remove(tileID: OverscaledTileID, value: ?{ value: T, timeout: ?TimeoutID}) {
+        if (!this.has(tileID)) { return this; }
+        const key = tileID.wrapped().key;
 
-        const data = this.data[key].pop();
+        const dataIndex = value === undefined ? 0 : this.data[key].indexOf(value);
+        const data = this.data[key][dataIndex];
+        this.data[key].splice(dataIndex, 1);
+        if (data.timeout) clearTimeout(data.timeout);
         if (this.data[key].length === 0) {
             delete this.data[key];
         }
-        this.onRemove(data);
+        this.onRemove(data.value);
         this.order.splice(this.order.indexOf(key), 1);
 
         return this;
@@ -147,14 +175,14 @@ class LRUCache<T> {
      * Change the max size of the cache.
      *
      * @param {number} max the max size of the cache
-     * @returns {LRUCache} this cache
+     * @returns {TileCache} this cache
      * @private
      */
-    setMaxSize(max: number): LRUCache<T> {
+    setMaxSize(max: number): TileCache<T> {
         this.max = max;
 
         while (this.order.length > this.max) {
-            const removedData = this.getAndRemove(this.order[0]);
+            const removedData = this._getAndRemoveByKey(this.order[0]);
             if (removedData) this.onRemove(removedData);
         }
 
@@ -162,4 +190,4 @@ class LRUCache<T> {
     }
 }
 
-export default LRUCache;
+export default TileCache;
