@@ -200,6 +200,11 @@ class Tile {
         if (this.iconAtlasTexture) {
             this.iconAtlasTexture.destroy();
         }
+
+        if (this.iconAtlas) {
+            this.iconAtlas = null;
+        }
+
         if (this.glyphAtlasTexture) {
             this.glyphAtlasTexture.destroy();
         }
