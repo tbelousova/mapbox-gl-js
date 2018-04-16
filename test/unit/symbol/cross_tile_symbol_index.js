@@ -192,6 +192,27 @@ test('CrossTileSymbolIndex.addLayer', (t) => {
         t.end();
     });
 
+    t.test('reuses indexes when longitude is wrapped', (t) => {
+        const index = new CrossTileSymbolIndex();
+        const longitude = 370;
+
+        const tileID = new OverscaledTileID(6, 1, 6, 8, 8);
+        const firstInstances = [
+            makeSymbolInstance(1000, 1000, ""), // A
+        ];
+        const tile = makeTile(tileID, firstInstances);
+
+        index.addLayer(styleLayer, [tile], longitude);
+        t.equal(firstInstances[0].crossTileID, 1); // A
+
+        tile.tileID = tileID.wrapped();
+
+        index.addLayer(styleLayer, [tile], longitude % 360);
+        t.equal(firstInstances[0].crossTileID, 1);
+        t.end();
+
+    });
+
     t.end();
 });
 
