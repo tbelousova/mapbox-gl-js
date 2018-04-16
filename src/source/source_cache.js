@@ -4,7 +4,7 @@ import { create as createSource } from './source';
 
 import Tile from './tile';
 import { Event, ErrorEvent, Evented } from '../util/evented';
-import Cache from './tile_cache';
+import TileCache from './tile_cache';
 import Coordinate from '../geo/coordinate';
 import { keysDifference } from '../util/util';
 import EXTENT from '../data/extent';
@@ -44,7 +44,7 @@ class SourceCache extends Evented {
     _sourceErrored: boolean;
     _tiles: {[any]: Tile};
     _prevLng: number | void;
-    _cache: Cache<Tile>;
+    _cache: TileCache;
     _timers: {[any]: TimeoutID};
     _cacheTimers: {[any]: TimeoutID};
     _maxTileCacheSize: ?number;
@@ -86,7 +86,7 @@ class SourceCache extends Evented {
         this._source = createSource(id, options, dispatcher, this);
 
         this._tiles = {};
-        this._cache = new Cache(0, this._unloadTile.bind(this));
+        this._cache = new TileCache(0, this._unloadTile.bind(this));
         this._timers = {};
         this._cacheTimers = {};
         this._maxTileCacheSize = null;
