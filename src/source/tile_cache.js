@@ -48,7 +48,7 @@ class TileCache<T> {
      * Add a key, value combination to the cache, trimming its size if this pushes
      * it over max length.
      *
-     * @param {OverscaledTileID} key lookup key for the item
+     * @param {OverscaledTileID} tileID lookup key for the item
      * @param {*} data any value
      *
      * @returns {TileCache} this cache
@@ -85,7 +85,7 @@ class TileCache<T> {
     /**
      * Determine whether the value attached to `key` is present
      *
-     * @param {OverscaledTileID} key the key to be looked-up
+     * @param {OverscaledTileID} tileID the key to be looked-up
      * @returns {boolean} whether the cache has this value
      * @private
      */
@@ -107,7 +107,7 @@ class TileCache<T> {
      * Get the value attached to a specific key and remove data from cache.
      * If the key is not found, returns `null`
      *
-     * @param {OverscaledTileID} key the key to look up
+     * @param {OverscaledTileID} tileID the key to look up
      * @returns {*} the data, or null if it isn't found
      * @private
      */
@@ -135,7 +135,7 @@ class TileCache<T> {
      * Get the value attached to a specific key without removing data
      * from the cache. If the key is not found, returns `null`
      *
-     * @param {OverscaledTileID} key the key to look up
+     * @param {OverscaledTileID} tileID the key to look up
      * @returns {*} the data, or null if it isn't found
      * @private
      */
@@ -149,7 +149,7 @@ class TileCache<T> {
     /**
      * Remove a key/value combination from the cache.
      *
-     * @param {OverscaledTileID} key the key for the pair to delete
+     * @param {OverscaledTileID} tileID the key for the pair to delete
      * @param {T} value If a value is provided, remove that exact version of the value.
      * @returns {TileCache} this cache
      * @private
