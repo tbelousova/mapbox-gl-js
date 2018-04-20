@@ -10,7 +10,7 @@ import ImageManager from '../render/image_manager';
 import GlyphManager from '../render/glyph_manager';
 import Light from './light';
 import LineAtlas from '../render/line_atlas';
-import { pick, clone, extend, deepEqual, filterObject, mapObject } from '../util/util';
+import {pick, clone, extend, deepEqual, filterObject, mapObject, clamp} from '../util/util';
 import { getJSON, ResourceType } from '../util/ajax';
 import { isMapboxURL, normalizeStyleURL } from '../util/mapbox';
 import browser from '../util/browser';
@@ -60,6 +60,32 @@ import type {
     SourceSpecification
 } from '../style-spec/types';
 import type {CustomLayerInterface} from './style_layer/custom_style_layer';
+
+const packUint8ToFloat = function pack(a: number, b: number) {
+    // coerce a and b to 8-bit ints
+    a = clamp(Math.floor(a), 0, 255);
+    b = clamp(Math.floor(b), 0, 255);
+    return 256 * a + b;
+};
+// TODO: Switch out for parseColor?
+function rgba2Array(str) {
+    if (str.substr(0,1) == '#') {
+        var c = parseInt('0x' + str.substr(1));
+        return [c>>16, (c>>8) &255, c&255, 255];
+    }
+
+    if (str.substr(0,3) == 'rgb') {
+        var pos0 = str.indexOf('(');
+        var pos1 = str.indexOf(')');
+        var colors = str.substring(pos0+1, pos1).split(',');
+        if (colors.length == 3) { // rgb()
+            return [parseInt(colors[0]), parseInt(colors[1]), parseInt(colors[2]), 255];
+        } else if (colors.length == 4) { //rgba()
+            return [parseInt(colors[0]), parseInt(colors[1]), parseInt(colors[2]), (parseFloat(colors[3])*255)&255];
+        }
+}
+    return null;
+}
 
 const supportedDiffOperations = pick(diffOperations, [
     'addLayer',
@@ -121,6 +147,9 @@ class Style extends Evented {
     placement: Placement;
     z: number;
 
+    _deferExtrusionFast: boolean;
+    _debounceFastSources: boolean;
+
     // exposed to allow stubbing by unit tests
     static getSourceType: typeof getSourceType;
     static setSourceType: typeof setSourceType;
@@ -141,6 +170,9 @@ class Style extends Evented {
         this.sourceCaches = {};
         this.zoomHistory = new ZoomHistory();
         this._loaded = false;
+
+        this._deferExtrusionFast = false;
+        this._debounceFastSources = false;
 
         this._resetUpdates();
 
@@ -508,15 +540,17 @@ class Style extends Evented {
      * @param {string} id id of the source to remove
      * @throws {Error} if no source is found with the given ID
      */
-    removeSource(id: string) {
+    removeSource(id: string, replacement?: SourceSpecification) {
         this._checkLoaded();
 
         if (this.sourceCaches[id] === undefined) {
             throw new Error('There is no source with this ID');
         }
-        for (const layerId in this._layers) {
-            if (this._layers[layerId].source === id) {
-                return this.fire(new ErrorEvent(new Error(`Source "${id}" cannot be removed while layer "${layerId}" is using it.`)));
+        if (!replacement) {
+            for (const layerId in this._layers) {
+                if (this._layers[layerId].source === id) {
+                    return this.fire(new ErrorEvent(new Error(`Source "${id}" cannot be removed while layer "${layerId}" is using it.`)));
+                }
             }
         }
 
@@ -527,7 +561,14 @@ class Style extends Evented {
         sourceCache.setEventedParent(null);
         sourceCache.clearTiles();
 
-        if (sourceCache.onRemove) sourceCache.onRemove(this.map);
+        if (sourceCache.onRemove) {
+            sourceCache.onRemove(this.map);
+        }
+
+        if (!!replacement) {
+            this.addSource(id, replacement);
+        }
+
         this._changed = true;
     }
 
@@ -788,7 +829,10 @@ class Style extends Evented {
         return this.getLayer(layer).getLayoutProperty(name);
     }
 
-    setPaintProperty(layerId: string, name: string, value: any) {
+    setPaintProperty(layerId: string, name: string, value: any, fast?: boolean) {
+        // work around until fast is fixes
+        //fast = false;
+
         this._checkLoaded();
 
         const layer = this.getLayer(layerId);
@@ -800,7 +844,239 @@ class Style extends Evented {
         if (deepEqual(layer.getPaintProperty(name), value)) return;
 
         const requiresRelayout = layer.setPaintProperty(name, value);
-        if (requiresRelayout) {
+
+        // this a temp workaround for one hard coded single usecase
+        // need to improve this part and make it work as a more generic feature
+        if (fast && name === 'fill-color' && value[0] === "match") {
+            const property = value[1][1];
+            const stops = value.slice(2);
+
+            const gl = this.map.painter.context.gl;
+            const bucketKey = /*'_dgFast_'+*/layerId;
+
+            function processTile(tile) {
+                if (!tile.buckets[bucketKey]) {
+                    tile.postProcess = null;
+                    return;
+                }
+
+                const binders = tile.buckets[bucketKey].programConfigurations.programConfigurations[layerId].binders;
+
+                if (!binders || !binders["fill-color"] || !binders["fill-color"].paintVertexBuffer) {
+                    return;
+                }
+
+                const buffer = binders["fill-color"].paintVertexBuffer;
+
+                var flen = tile.featureTags.length;
+                var byteLen = tile.featureTags[flen-1][bucketKey][1] * buffer.itemSize;
+
+                var uint8Array;
+                if (buffer.arrayBuffer) {
+                    // when it's still in arrayBuffer
+                    uint8Array = new Uint8Array(buffer.arrayBuffer);
+                } else {
+                    // when arrayBuffer is destroyed
+                    uint8Array = new Uint8Array(byteLen);
+                }
+
+                var float32Array = new Float32Array(uint8Array.buffer);
+
+                for (var f = 0; f < flen; ++f) {
+                    var tags = tile.featureTags[f];
+                    var rgba = colorMap[tags[property]];
+                    if (!rgba) rgba = defaultColor;
+                    var end = tags[bucketKey][1];
+                    for (var cpos = tags[bucketKey][0]; cpos < end; ++ cpos) {
+                        float32Array[cpos * 2 + 0] = packUint8ToFloat(rgba[0], rgba[1]);
+                        float32Array[cpos * 2 + 1] = packUint8ToFloat(rgba[2], rgba[3]);
+                    }
+                }
+
+                if (buffer.buffer) {
+                    // when arrayBuffer is destroyed and buffer is created
+                    var type = gl.ARRAY_BUFFER;
+                    gl.bindBuffer(type, buffer.buffer);
+                    gl.bufferSubData(type, 0, uint8Array);
+                }
+            }
+
+            // build cache;
+            var colorMap = {};
+            var defaultColor = [0,0,0,0];
+            if (stops.length) {
+                for (var i = 0; i < (stops.length - 1); i += 2) {
+                    var rgba = rgba2Array(stops[i + 1]);
+                    if (rgba) {
+                        colorMap[stops[i]] = rgba;
+                    }
+                }
+
+                defaultColor = rgba2Array(stops[stops.length - 1]);
+                if (defaultColor == null) {
+                    defaultColor = [0,0,0,0];
+                }
+            }
+
+            // process tiles
+            for (var key in this.sourceCaches[layer.source]._tiles) {
+                var tile = this.sourceCaches[layer.source]._tiles[key];
+                tile.postProcess = processTile;
+                if (tile.buckets[bucketKey]) {
+                    processTile(tile);
+                }
+            }
+
+            this._updatedLayers[layer.id] = true;
+            this._changed = true;
+        }
+
+        // this a temp workaround for one hard coded single usecase
+        // need to improve this part and make it work as a more generic feature
+        else if (fast && (name === 'fill-extrusion-color' || name === 'fill-extrusion-height') && value[0] === "match") {
+            if (this._deferExtrusionFast) {
+                return;
+            }
+
+            this._deferExtrusionFast = true;
+
+            const property = value[1][1];
+            const stops = value.slice(2);
+
+            setTimeout(() => {
+                this._deferExtrusionFast = false;
+
+                var gl = this.map.painter.context.gl;
+                var bucketKey = layerId;
+
+                function processTile(tile) {
+                    if (!tile.buckets[bucketKey]) {
+                        tile.postProcess = null;
+                        return;
+                    }
+
+                    const binders = tile.buckets[bucketKey].programConfigurations.programConfigurations[layerId].binders;
+
+                    const bufferColor = binders["fill-extrusion-color"].paintVertexBuffer;
+                    const bufferHeight = binders["fill-extrusion-height"].paintVertexBuffer;
+
+                    if (!bufferColor || !bufferHeight) {
+                        return;
+                    }
+
+                    var flen = tile.featureTags.length;
+
+                    const createArrObj = (buffer) => {
+                        var byteLen = tile.featureTags[flen-1][bucketKey][1] * buffer.itemSize;
+                        var uint8Array;
+
+                        if (buffer.arrayBuffer) {
+                            // when it's still in arrayBuffer
+                            uint8Array = new Uint8Array(buffer.arrayBuffer);
+                        } else {
+                            // when arrayBuffer is destroyed
+                            uint8Array = new Uint8Array(byteLen);
+                        }
+
+                        var float32Array = new Float32Array(uint8Array.buffer);
+
+                        return { uint8Array, float32Array };
+                    };
+
+                    const arrObjColor = createArrObj(bufferColor);
+                    const arrObjHeight = createArrObj(bufferHeight);
+
+                    for (var f = 0; f < flen; ++f) {
+                        var tags = tile.featureTags[f];
+                        var height = parseFloat(cacheMap[tags[property]] || defaultValue);
+                        var color = colorMap[tags[property]] || defaultColor;
+
+                        var start = tags[bucketKey][0];
+                        var end = tags[bucketKey][1];
+
+                        for (var cpos = start; cpos < end; ++cpos) {
+                            arrObjColor.float32Array[cpos * 2 + 0] = packUint8ToFloat(color[0], color[1]);
+                            arrObjColor.float32Array[cpos * 2 + 1] = packUint8ToFloat(color[2], color[3]);
+
+                            arrObjHeight.float32Array[cpos] = height;
+                        }
+                    }
+
+                    if (bufferColor.buffer) {
+                        // when arrayBuffer is destroyed and buffer is created
+                        var type = gl.ARRAY_BUFFER;
+                        // ARRAY_BUFFER
+                        gl.bindBuffer(type, bufferColor.buffer);
+                        gl.bufferSubData(type, 0, arrObjColor.uint8Array);
+                    }
+
+                    if (bufferHeight.buffer) {
+                        // when arrayBuffer is destroyed and buffer is created
+                        var type = gl.ARRAY_BUFFER;
+                        // ARRAY_BUFFER
+                        gl.bindBuffer(type, bufferHeight.buffer);
+                        gl.bufferSubData(type, 0, arrObjHeight.uint8Array);
+                    }
+                }
+
+                var heightStops = name === 'fill-extrusion-height' ? stops :
+                    (() => {
+                        var property = layer.getPaintProperty('fill-extrusion-height');
+                        return (property[0] === "match") ? property.slice(2) : [];
+                    })();
+
+                var colorStops = name === 'fill-extrusion-color' ? stops :
+                    (() => {
+                        var property = layer.getPaintProperty('fill-extrusion-color');
+                        return (property[0] === "match") ? property.slice(2) : [];
+                    })();
+
+                // build cache;
+                var cacheMap = {};
+                var defaultValue = 0;
+                if (heightStops.length) {
+                    for (var i = 0; i < (heightStops.length - 1); i += 2) {
+                        var height = heightStops[i + 1];
+                        if (height) {
+                            cacheMap[heightStops[i]] = height;
+                        }
+                    }
+
+                    defaultValue = heightStops[heightStops.length - 1] || 0;
+                }
+
+                // build cache;
+                var colorMap = {};
+                var defaultColor = [0,0,0,0];
+                if (colorStops.length) {
+                    for (var i = 0; i < (colorStops.length - 1); i += 2) {
+                        var rgba = rgba2Array(colorStops[i + 1]);
+                        if (rgba) {
+                            colorMap[colorStops[i]] = rgba;
+                        }
+                    }
+
+                    defaultColor = rgba2Array(colorStops[colorStops.length - 1]);
+                    if (defaultColor == null) {
+                        defaultColor = [0,0,0,0];
+                    }
+                }
+
+                // process tiles
+                for (var key in this.sourceCaches[layer.source]._tiles) {
+                    var tile = this.sourceCaches[layer.source]._tiles[key];
+                    tile.postProcess = processTile;
+                    if (tile.buckets[bucketKey]) {
+                        processTile(tile);
+                    }
+                }
+            }, 0);
+
+            this._updatedLayers[layer.id] = true;
+            this._changed = true;
+        }
+
+        else if (requiresRelayout) {
             this._updateLayer(layer);
         }
 

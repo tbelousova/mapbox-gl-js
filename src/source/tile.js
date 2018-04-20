@@ -93,6 +93,7 @@ class Tile {
     resourceTiming: ?Array<PerformanceResourceTiming>;
     queryPadding: number;
 
+    featureTags: ?Object;
     symbolFadeHoldUntil: ?number;
     hasSymbolBuckets: boolean;
 
@@ -194,6 +195,14 @@ class Tile {
         }
         if (data.glyphAtlasImage) {
             this.glyphAtlasImage = data.glyphAtlasImage;
+        }
+
+        // deserialize the custom data in main thread
+        this.featureTags = data.featureTags;
+
+        // in case the style is updated during worker job
+        if (this.postProcess) {
+            this.postProcess(this);
         }
     }
 

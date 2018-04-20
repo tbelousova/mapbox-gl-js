@@ -71,6 +71,8 @@ function packColor(color: Color): [number, number] {
 
 interface Binder<T> {
     maxValue: number;
+    _isFillLayer: boolean;
+    id: string;
     uniformNames: Array<string>;
 
     populatePaintArray(length: number, feature: Feature, imagePositions: {[string]: ImagePosition}): void;
@@ -92,6 +94,8 @@ class ConstantBinder<T> implements Binder<T> {
     names: Array<string>;
     maxValue: number;
     type: string;
+    _isFillLayer: boolean;
+    id: string;
     uniformNames: Array<string>;
 
     constructor(value: T, names: Array<string>, type: string) {
@@ -181,6 +185,8 @@ class SourceExpressionBinder<T> implements Binder<T> {
     names: Array<string>;
     uniformNames: Array<string>;
     type: string;
+    _isFillLayer: boolean;
+    id: string;
     maxValue: number;
 
     paintVertexArray: StructArray;
@@ -230,6 +236,9 @@ class SourceExpressionBinder<T> implements Binder<T> {
 
             this.maxValue = Math.max(this.maxValue, value);
         }
+        if (this._isFillLayer) {
+            feature.properties[/*'_dgFast_' + */ this.id] = [start, newLength];
+        }
     }
 
     updatePaintArray(start: number, end: number, feature: Feature, featureState: FeatureState) {
@@ -247,6 +256,9 @@ class SourceExpressionBinder<T> implements Binder<T> {
             }
 
             this.maxValue = Math.max(this.maxValue, value);
+        }
+if (this._isFillLayer) {
+            feature.properties[/*'_dgFast_' + */ this.id] = [start, end];
         }
     }
 
@@ -282,6 +294,8 @@ class CompositeExpressionBinder<T> implements Binder<T> {
     type: string;
     useIntegerZoom: boolean;
     zoom: number;
+    _isFillLayer: boolean;
+    id: string;
     maxValue: number;
 
     paintVertexArray: StructArray;
@@ -335,6 +349,9 @@ class CompositeExpressionBinder<T> implements Binder<T> {
             }
             this.maxValue = Math.max(this.maxValue, min, max);
         }
+        if (this._isFillLayer) {
+            feature.properties[/*'_dgFast_' + */ this.id] = [start, newLength];
+        }
     }
 
     updatePaintArray(start: number, end: number, feature: Feature, featureState: FeatureState) {
@@ -354,6 +371,9 @@ class CompositeExpressionBinder<T> implements Binder<T> {
                 paintArray.emplace(i, min, max);
             }
             this.maxValue = Math.max(this.maxValue, min, max);
+        }
+        if (this._isFillLayer) {
+            feature.properties[/*'_dgFast_' + */ this.id] = [start, end];
         }
     }
 
@@ -593,10 +613,14 @@ export default class ProgramConfiguration {
             } else if (value.value.kind === 'source') {
                 const StructArrayLayout = layoutType(property, type, 'source');
                 self.binders[property] = new SourceExpressionBinder(value.value, names, type, StructArrayLayout);
+                self.binders[property]._isFillLayer = layer._isFillLayer;
+                self.binders[property].id = layer.id;
                 keys.push(`/a_${property}`);
             } else {
                 const StructArrayLayout = layoutType(property, type, 'composite');
                 self.binders[property] = new CompositeExpressionBinder(value.value, names, type, useIntegerZoom, zoom, StructArrayLayout);
+                self.binders[property]._isFillLayer = layer._isFillLayer;
+                self.binders[property].id = layer.id;
                 keys.push(`/z_${property}`);
             }
         }

@@ -261,6 +261,7 @@ class Map extends Camera {
     _collectResourceTiming: boolean;
     _renderTaskQueue: TaskQueue;
     _controls: Array<IControl>;
+    transitionDuration: Object;
 
     /**
      * The map's {@link ScrollZoomHandler}, which implements zooming in and out with a scroll wheel or trackpad.
@@ -322,6 +323,7 @@ class Map extends Camera {
         this._collectResourceTiming = options.collectResourceTiming;
         this._renderTaskQueue = new TaskQueue();
         this._controls = [];
+        this.transitionDuration = {};
 
         const transformRequestFn = options.transformRequest;
         this._transformRequest = transformRequestFn ?
@@ -1062,9 +1064,9 @@ class Map extends Camera {
      * @param {string} id The ID of the source to remove.
      * @returns {Map} `this`
      */
-    removeSource(id: string) {
-        this.style.removeSource(id);
-        return this._update(true);
+    removeSource(id: string, replacement?: SourceSpecification) {
+        this.style.removeSource(id, replacement);
+        this._update(true);
     }
 
     /**
@@ -1273,9 +1275,9 @@ class Map extends Camera {
      * @see [Adjust a layer's opacity](https://www.mapbox.com/mapbox-gl-js/example/adjust-layer-opacity/)
      * @see [Create a draggable point](https://www.mapbox.com/mapbox-gl-js/example/drag-a-point/)
      */
-    setPaintProperty(layer: string, name: string, value: any) {
-        this.style.setPaintProperty(layer, name, value);
-        return this._update(true);
+    setPaintProperty(layer: string, name: string, value: any, fast?: boolean) {
+        this.style.setPaintProperty(layer, name, value, fast);
+        this._update(true);
     }
 
     /**
@@ -1534,9 +1536,16 @@ class Map extends Camera {
         this._styleDirty = this._styleDirty || updateStyle;
         this._sourcesDirty = true;
         this.triggerRepaint();
-
         return this;
+}
+setTransitionDuration(layer: string, value: number) {
+        this.transitionDuration[layer] = value;
     }
+
+    getTransitionDuration(layer: string) {
+        return this.transitionDuration[layer];
+    }
+
 
     /**
      * Request that the given callback be executed during the next render
