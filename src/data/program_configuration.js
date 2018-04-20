@@ -52,6 +52,8 @@ function packColor(color: Color): [number, number] {
  */
 interface Binder<T> {
     statistics: { max: number };
+    _isFillLayer: boolean;
+    id: string;
 
     populatePaintArray(length: number, feature: Feature): void;
     upload(Context): void;
@@ -69,6 +71,8 @@ class ConstantBinder<T> implements Binder<T> {
     value: T;
     name: string;
     type: string;
+    _isFillLayer: boolean;
+    id: string;
     statistics: { max: number };
 
     constructor(value: T, name: string, type: string) {
@@ -104,6 +108,8 @@ class SourceExpressionBinder<T> implements Binder<T> {
     expression: SourceExpression;
     name: string;
     type: string;
+    _isFillLayer: boolean;
+    id: string;
     statistics: { max: number };
 
     paintVertexArray: StructArray;
@@ -149,6 +155,10 @@ class SourceExpressionBinder<T> implements Binder<T> {
 
             this.statistics.max = Math.max(this.statistics.max, value);
         }
+
+        if (this._isFillLayer) {
+            feature.properties[/*'_dgFast_' + */ this.id] = [start, length];
+        }
     }
 
     upload(context: Context) {
@@ -174,6 +184,8 @@ class CompositeExpressionBinder<T> implements Binder<T> {
     type: string;
     useIntegerZoom: boolean;
     zoom: number;
+    _isFillLayer: boolean;
+    id: string;
     statistics: { max: number };
 
     paintVertexArray: StructArray;
@@ -222,6 +234,10 @@ class CompositeExpressionBinder<T> implements Binder<T> {
             }
 
             this.statistics.max = Math.max(this.statistics.max, min, max);
+        }
+
+        if (this._isFillLayer) {
+            feature.properties[/*'_dgFast_' + */ this.id] = [start, length];
         }
     }
 
@@ -303,9 +319,13 @@ export default class ProgramConfiguration {
                 keys.push(`/u_${name}`);
             } else if (value.value.kind === 'source') {
                 self.binders[property] = new SourceExpressionBinder(value.value, name, type);
+                self.binders[property]._isFillLayer = layer._isFillLayer;
+                self.binders[property].id = layer.id;
                 keys.push(`/a_${name}`);
             } else {
                 self.binders[property] = new CompositeExpressionBinder(value.value, name, type, useIntegerZoom, zoom);
+                self.binders[property]._isFillLayer = layer._isFillLayer;
+                self.binders[property].id = layer.id;
                 keys.push(`/z_${name}`);
             }
         }

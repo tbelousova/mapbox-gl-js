@@ -91,6 +91,8 @@ class Tile {
     resourceTiming: ?Array<PerformanceResourceTiming>;
     queryPadding: number;
 
+    featureTags: ?Object;
+
     /**
      * @param {OverscaledTileID} tileID
      * @param size
@@ -177,6 +179,14 @@ class Tile {
         }
         if (data.glyphAtlasImage) {
             this.glyphAtlasImage = data.glyphAtlasImage;
+        }
+
+        // deserialize the custom data in main thread
+        this.featureTags = data.featureTags;
+
+        // in case the style is updated during worker job
+        if (this.postProcess) {
+            this.postProcess(this);
         }
     }
 

@@ -246,6 +246,7 @@ class Map extends Camera {
     _crossFadingFactor: number;
     _collectResourceTiming: boolean;
     _renderTaskQueue: TaskQueue;
+    transitionDuration: Object;
 
     scrollZoom: ScrollZoomHandler;
     boxZoom: BoxZoomHandler;
@@ -276,6 +277,7 @@ class Map extends Camera {
         this._crossFadingFactor = 1;
         this._collectResourceTiming = options.collectResourceTiming;
         this._renderTaskQueue = new TaskQueue();
+        this.transitionDuration = {};
 
         const transformRequestFn = options.transformRequest;
         this._transformRequest = transformRequestFn ?  (url, type) => transformRequestFn(url, type) || ({ url }) : (url) => ({ url });
@@ -1069,8 +1071,8 @@ class Map extends Camera {
      * @param {string} id The ID of the source to remove.
      * @returns {Map} `this`
      */
-    removeSource(id: string) {
-        this.style.removeSource(id);
+    removeSource(id: string, replacement?: SourceSpecification) {
+        this.style.removeSource(id, replacement);
         this._update(true);
         return this;
     }
@@ -1276,8 +1278,8 @@ class Map extends Camera {
      * @see [Adjust a layer's opacity](https://www.mapbox.com/mapbox-gl-js/example/adjust-layer-opacity/)
      * @see [Create a draggable point](https://www.mapbox.com/mapbox-gl-js/example/drag-a-point/)
      */
-    setPaintProperty(layer: string, name: string, value: any) {
-        this.style.setPaintProperty(layer, name, value);
+    setPaintProperty(layer: string, name: string, value: any, fast?: boolean) {
+        this.style.setPaintProperty(layer, name, value, fast);
         this._update(true);
         return this;
     }
@@ -1497,6 +1499,14 @@ class Map extends Camera {
         this._sourcesDirty = true;
 
         this._rerender();
+    }
+
+    setTransitionDuration(layer: string, value: number) {
+        this.transitionDuration[layer] = value;
+    }
+
+    getTransitionDuration(layer: string) {
+        return this.transitionDuration[layer];
     }
 
     /**
