@@ -68,7 +68,7 @@ const packUint8ToFloat = function pack(a: number, b: number) {
     return 256 * a + b;
 };
 // TODO: Switch out for parseColor?
-function rgba2Array(str) {
+function rgba2Array(str: string): Array<number> {
     if (str.substr(0,1) == '#') {
         var c = parseInt('0x' + str.substr(1));
         return [c>>16, (c>>8) &255, c&255, 255];
@@ -84,7 +84,7 @@ function rgba2Array(str) {
             return [parseInt(colors[0]), parseInt(colors[1]), parseInt(colors[2]), (parseFloat(colors[3])*255)&255];
         }
 }
-    return null;
+    return [0,0,0,0];
 }
 
 const supportedDiffOperations = pick(diffOperations, [
@@ -849,7 +849,7 @@ class Style extends Evented {
         // need to improve this part and make it work as a more generic feature
         if (fast && name === 'fill-color' && value[0] === "match") {
             const property = value[1][1];
-            const stops = value.slice(2);
+            const stops: Array<string> = value.slice(2);
 
             const gl = this.map.painter.context.gl;
             const bucketKey = /*'_dgFast_'+*/layerId;
@@ -860,7 +860,7 @@ class Style extends Evented {
                     return;
                 }
 
-                const binders = tile.buckets[bucketKey].programConfigurations.programConfigurations[layerId].binders;
+                const binders = (tile.buckets[bucketKey]: any).programConfigurations.programConfigurations[layerId].binders;
 
                 if (!binders || !binders["fill-color"] || !binders["fill-color"].paintVertexBuffer) {
                     return;
@@ -884,8 +884,11 @@ class Style extends Evented {
 
                 for (var f = 0; f < flen; ++f) {
                     var tags = tile.featureTags[f];
-                    var rgba = colorMap[tags[property]];
-                    if (!rgba) rgba = defaultColor;
+                    var rgba: Array<number> ;
+                    if (!colorMap[tags[property]])
+                        rgba = defaultColor
+                    else
+                        rgba = colorMap[tags[property]];
                     var end = tags[bucketKey][1];
                     for (var cpos = tags[bucketKey][0]; cpos < end; ++ cpos) {
                         float32Array[cpos * 2 + 0] = packUint8ToFloat(rgba[0], rgba[1]);
@@ -903,7 +906,7 @@ class Style extends Evented {
 
             // build cache;
             var colorMap = {};
-            var defaultColor = [0,0,0,0];
+            var defaultColor: Array<number> = [0,0,0,0];
             if (stops.length) {
                 for (var i = 0; i < (stops.length - 1); i += 2) {
                     var rgba = rgba2Array(stops[i + 1]);
@@ -913,9 +916,10 @@ class Style extends Evented {
                 }
 
                 defaultColor = rgba2Array(stops[stops.length - 1]);
+                /*
                 if (defaultColor == null) {
                     defaultColor = [0,0,0,0];
-                }
+                }*/
             }
 
             // process tiles
@@ -955,7 +959,7 @@ class Style extends Evented {
                         return;
                     }
 
-                    const binders = tile.buckets[bucketKey].programConfigurations.programConfigurations[layerId].binders;
+                    const binders = (tile.buckets[bucketKey]: any).programConfigurations.programConfigurations[layerId].binders;
 
                     const bufferColor = binders["fill-extrusion-color"].paintVertexBuffer;
                     const bufferHeight = binders["fill-extrusion-height"].paintVertexBuffer;
@@ -989,7 +993,7 @@ class Style extends Evented {
                     for (var f = 0; f < flen; ++f) {
                         var tags = tile.featureTags[f];
                         var height = parseFloat(cacheMap[tags[property]] || defaultValue);
-                        var color = colorMap[tags[property]] || defaultColor;
+                        var color: Array<number> = colorMap[tags[property]] || defaultColor;
 
                         var start = tags[bucketKey][0];
                         var end = tags[bucketKey][1];
@@ -1046,8 +1050,8 @@ class Style extends Evented {
                 }
 
                 // build cache;
-                var colorMap = {};
-                var defaultColor = [0,0,0,0];
+                var colorMap = {string:Array};
+                var defaultColor: Array<number> = [0,0,0,0];
                 if (colorStops.length) {
                     for (var i = 0; i < (colorStops.length - 1); i += 2) {
                         var rgba = rgba2Array(colorStops[i + 1]);
@@ -1057,9 +1061,10 @@ class Style extends Evented {
                     }
 
                     defaultColor = rgba2Array(colorStops[colorStops.length - 1]);
+                    /*
                     if (defaultColor == null) {
                         defaultColor = [0,0,0,0];
-                    }
+                    }*/
                 }
 
                 // process tiles

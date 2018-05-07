@@ -144,6 +144,8 @@ class CrossFadedConstantBinder<T> implements Binder<T> {
     patternPositions: {[string]: ?Array<number>};
     type: string;
     maxValue: number;
+    _isFillLayer: boolean;
+    id: string;
 
     constructor(value: T, names: Array<string>, type: string) {
         this.value = value;
@@ -420,6 +422,8 @@ class CrossFadedCompositeBinder<T> implements Binder<T> {
     zoom: number;
     maxValue: number;
     layerId: string;
+    _isFillLayer: boolean;
+    id: string;
 
     zoomInPaintVertexArray: StructArray;
     zoomOutPaintVertexArray: StructArray;

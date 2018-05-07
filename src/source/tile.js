@@ -93,9 +93,10 @@ class Tile {
     resourceTiming: ?Array<PerformanceResourceTiming>;
     queryPadding: number;
 
-    featureTags: ?Object;
+    featureTags: Array<{string: number}>;
     symbolFadeHoldUntil: ?number;
     hasSymbolBuckets: boolean;
+    postProcess: any;
 
     /**
      * @param {OverscaledTileID} tileID
