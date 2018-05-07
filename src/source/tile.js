@@ -91,7 +91,8 @@ class Tile {
     resourceTiming: ?Array<PerformanceResourceTiming>;
     queryPadding: number;
 
-    featureTags: ?Object;
+    featureTags: Array<{string: number}>;
+    postProcess: any;
 
     /**
      * @param {OverscaledTileID} tileID

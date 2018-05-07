@@ -39,7 +39,8 @@ export type WorkerTileResult = {
     featureIndex: FeatureIndex,
     collisionBoxArray: CollisionBoxArray,
     rawTileData?: ArrayBuffer,
-    resourceTiming?: Array<PerformanceResourceTiming>
+    resourceTiming?: Array<PerformanceResourceTiming>,
+    featureTags: Array<{string: number}>
 };
 
 export type WorkerTileCallback = (error: ?Error, result: ?WorkerTileResult) => void;
