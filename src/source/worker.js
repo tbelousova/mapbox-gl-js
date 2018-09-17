@@ -20,6 +20,7 @@ import type {
 
 import type {WorkerGlobalScopeInterface} from '../util/web_worker';
 import type {Callback} from '../types/callback';
+import type {LayerSpecification} from '../style-spec/types';
 
 /**
  * @private
@@ -54,12 +55,13 @@ export default class Worker {
             this.workerSourceTypes[name] = WorkerSource;
         };
 
-        this.self.registerRTLTextPlugin = (rtlTextPlugin: {applyArabicShaping: Function, processBidirectionalText: Function}) => {
-            if (globalRTLTextPlugin.applyArabicShaping || globalRTLTextPlugin.processBidirectionalText) {
+        this.self.registerRTLTextPlugin = (rtlTextPlugin: {applyArabicShaping: Function, processBidirectionalText: Function, processStyledBidirectionalText?: Function}) => {
+            if (globalRTLTextPlugin.isLoaded()) {
                 throw new Error('RTL text plugin already registered.');
             }
             globalRTLTextPlugin['applyArabicShaping'] = rtlTextPlugin.applyArabicShaping;
             globalRTLTextPlugin['processBidirectionalText'] = rtlTextPlugin.processBidirectionalText;
+            globalRTLTextPlugin['processStyledBidirectionalText'] = rtlTextPlugin.processStyledBidirectionalText;
         };
     }
 
@@ -132,20 +134,20 @@ export default class Worker {
             this.self.importScripts(params.url);
             callback();
         } catch (e) {
-            callback(e);
+            callback(e.toString());
         }
     }
 
     loadRTLTextPlugin(map: string, pluginURL: string, callback: Callback<void>) {
         try {
-            if (!globalRTLTextPlugin.applyArabicShaping && !globalRTLTextPlugin.processBidirectionalText) {
+            if (!globalRTLTextPlugin.isLoaded()) {
                 this.self.importScripts(pluginURL);
-                if (!globalRTLTextPlugin.applyArabicShaping || !globalRTLTextPlugin.processBidirectionalText) {
-                    callback(new Error(`RTL Text Plugin failed to import scripts from ${pluginURL}`));
-                }
+                callback(globalRTLTextPlugin.isLoaded() ?
+                    null :
+                    new Error(`RTL Text Plugin failed to import scripts from ${pluginURL}`));
             }
         } catch (e) {
-            callback(e);
+            callback(e.toString());
         }
     }
 
@@ -196,4 +198,3 @@ if (typeof WorkerGlobalScope !== 'undefined' &&
     self instanceof WorkerGlobalScope) {
     new Worker(self);
 }
-

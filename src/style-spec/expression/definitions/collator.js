@@ -65,16 +65,6 @@ export class Collator {
         return new Intl.Collator(this.locale ? this.locale : [])
             .resolvedOptions().locale;
     }
-
-    serialize() {
-        const options = {};
-        options['caseSensitive'] = this.sensitivity === 'variant' || this.sensitivity === 'case';
-        options['diacriticSensitive'] = this.sensitivity === 'variant' || this.sensitivity === 'accent';
-        if (this.locale) {
-            options['locale'] = this.locale;
-        }
-        return ["collator", options];
-    }
 }
 
 export class CollatorExpression implements Expression {
@@ -99,11 +89,11 @@ export class CollatorExpression implements Expression {
             return context.error(`Collator options argument must be an object.`);
 
         const caseSensitive = context.parse(
-            options['caseSensitive'] === undefined ? false : options['caseSensitive'], 1, BooleanType);
+            options['case-sensitive'] === undefined ? false : options['case-sensitive'], 1, BooleanType);
         if (!caseSensitive) return null;
 
         const diacriticSensitive = context.parse(
-            options['diacriticSensitive'] === undefined ? false : options['diacriticSensitive'], 1, BooleanType);
+            options['diacritic-sensitive'] === undefined ? false : options['diacritic-sensitive'], 1, BooleanType);
         if (!diacriticSensitive) return null;
 
         let locale = null;
@@ -137,10 +127,10 @@ export class CollatorExpression implements Expression {
 
     serialize() {
         const options = {};
-        options['caseSensitive'] = this.caseSensitive;
-        options['diacriticSensitive'] = this.diacriticSensitive;
+        options['case-sensitive'] = this.caseSensitive.serialize();
+        options['diacritic-sensitive'] = this.diacriticSensitive.serialize();
         if (this.locale) {
-            options['locale'] = this.locale;
+            options['locale'] = this.locale.serialize();
         }
         return ["collator", options];
     }

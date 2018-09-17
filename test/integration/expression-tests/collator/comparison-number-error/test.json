@@ -3,13 +3,13 @@
     "<",
     1,
     2,
-    ["collator", {"caseSensitive": false, "diacriticSensitive": false}]
+    ["collator", {"case-sensitive": false, "diacritic-sensitive": false}]
   ],
   "expected": {
     "compiled": {
       "result": "error",
       "errors": [
-        {"key": "[1]", "error": "Expected string but found number instead."}
+        {"key": "", "error": "Cannot use collator to compare non-string types."}
       ]
     }
   }

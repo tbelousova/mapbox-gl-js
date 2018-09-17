@@ -7,7 +7,7 @@
         "resolved-locale",
         [
           "collator",
-          {"caseSensitive": true, "diacriticSensitive": false, "locale": "de"}
+          {"case-sensitive": true, "diacritic-sensitive": false, "locale": "de"}
         ]
       ],
       "de"
@@ -18,7 +18,7 @@
       ["get", "rhs"],
       [
         "collator",
-        {"caseSensitive": true, "diacriticSensitive": false, "locale": "de"}
+        {"case-sensitive": true, "diacritic-sensitive": false, "locale": "de"}
       ]
     ],
     ["case", ["==", ["get", "rhs"], "ue"], true, false]
@@ -37,14 +37,28 @@
     "outputs": [true, false],
     "serialized": [
       "case",
-      false,
+      [
+        "==",
+        [
+          "resolved-locale",
+          [
+            "collator",
+            {
+              "case-sensitive": true,
+              "diacritic-sensitive": false,
+              "locale": "de"
+            }
+          ]
+        ],
+        "de"
+      ],
       [
         "==",
         ["string", ["get", "lhs"]],
         ["get", "rhs"],
         [
           "collator",
-          {"caseSensitive": true, "diacriticSensitive": false, "locale": "de"}
+          {"case-sensitive": true, "diacritic-sensitive": false, "locale": "de"}
         ]
       ],
       ["case", ["==", ["get", "rhs"], "ue"], true, false]

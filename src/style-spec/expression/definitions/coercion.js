@@ -9,7 +9,9 @@ import RuntimeError from '../runtime_error';
 import type { Expression } from '../expression';
 import type ParsingContext from '../parsing_context';
 import type EvaluationContext from '../evaluation_context';
+import type { Value } from '../values';
 import type { Type } from '../types';
+import { Formatted, FormattedSection } from './formatted';
 
 const types = {
     'to-number': NumberType,
@@ -58,7 +60,9 @@ class Coercion implements Expression {
             for (const arg of this.args) {
                 input = arg.evaluate(ctx);
                 error = null;
-                if (typeof input === 'string') {
+                if (input instanceof Color) {
+                    return input;
+                } else if (typeof input === 'string') {
                     const c = ctx.parseColor(input);
                     if (c) return c;
                 } else if (Array.isArray(input)) {
@@ -73,11 +77,20 @@ class Coercion implements Expression {
                 }
             }
             throw new RuntimeError(error || `Could not parse color from value '${typeof input === 'string' ? input : JSON.stringify(input)}'`);
+        } else if (this.type.kind === 'formatted') {
+            let input;
+            for (const arg of this.args) {
+                input = arg.evaluate(ctx);
+                if (typeof input === 'string') {
+                    return new Formatted([new FormattedSection(input, null, null)]);
+                }
+            }
+            throw new RuntimeError(`Could not parse formatted text from value '${typeof input === 'string' ? input : JSON.stringify(input)}'`);
         } else {
             let value = null;
             for (const arg of this.args) {
                 value = arg.evaluate(ctx);
-                if (value === null) continue;
+                if (value === null) return 0;
                 const num = Number(value);
                 if (isNaN(num)) continue;
                 return num;
@@ -90,7 +103,7 @@ class Coercion implements Expression {
         this.args.forEach(fn);
     }
 
-    possibleOutputs() {
+    possibleOutputs(): Array<Value | void> {
         return [].concat(...this.args.map((arg) => arg.possibleOutputs()));
     }
 

@@ -1,8 +1,10 @@
 // @flow
 
 import window from './window';
+import { extend } from './util';
 
 import type { Callback } from '../types/callback';
+import type { Cancelable } from '../types/cancelable';
 
 /**
  * The type of a resource.
@@ -36,6 +38,7 @@ if (typeof Object.freeze == 'function') {
 export type RequestParameters = {
     url: string,
     headers?: Object,
+    method?: 'GET' | 'POST' | 'PUT',
     credentials?: 'same-origin' | 'include',
     collectResourceTiming?: boolean
 };
@@ -61,7 +64,7 @@ class AJAXError extends Error {
 function makeRequest(requestParameters: RequestParameters): XMLHttpRequest {
     const xhr: XMLHttpRequest = new window.XMLHttpRequest();
 
-    xhr.open('GET', requestParameters.url, true);
+    xhr.open(requestParameters.method || 'GET', requestParameters.url, true);
     for (const k in requestParameters.headers) {
         xhr.setRequestHeader(k, requestParameters.headers[k]);
     }
@@ -69,14 +72,14 @@ function makeRequest(requestParameters: RequestParameters): XMLHttpRequest {
     return xhr;
 }
 
-export const getJSON = function(requestParameters: RequestParameters, callback: Callback<mixed>) {
+export const getJSON = function(requestParameters: RequestParameters, callback: Callback<mixed>): Cancelable {
     const xhr = makeRequest(requestParameters);
     xhr.setRequestHeader('Accept', 'application/json');
     xhr.onerror = function() {
         callback(new Error(xhr.statusText));
     };
     xhr.onload = function() {
-        if (xhr.status >= 200 && xhr.status < 300 && xhr.response) {
+        if (((xhr.status >= 200 && xhr.status < 300) || xhr.status === 0) && xhr.response) {
             let data;
             try {
                 data = JSON.parse(xhr.response);
@@ -93,10 +96,10 @@ export const getJSON = function(requestParameters: RequestParameters, callback: 
         }
     };
     xhr.send();
-    return xhr;
+    return { cancel: () => xhr.abort() };
 };
 
-export const getArrayBuffer = function(requestParameters: RequestParameters, callback: Callback<{data: ArrayBuffer, cacheControl: ?string, expires: ?string}>) {
+export const getArrayBuffer = function(requestParameters: RequestParameters, callback: Callback<{data: ArrayBuffer, cacheControl: ?string, expires: ?string}>): Cancelable {
     const xhr = makeRequest(requestParameters);
     xhr.responseType = 'arraybuffer';
     xhr.onerror = function() {
@@ -107,7 +110,7 @@ export const getArrayBuffer = function(requestParameters: RequestParameters, cal
         if (response.byteLength === 0 && xhr.status === 200) {
             return callback(new Error('http status 200 returned without content.'));
         }
-        if (xhr.status >= 200 && xhr.status < 300 && xhr.response) {
+        if (((xhr.status >= 200 && xhr.status < 300) || xhr.status === 0) && xhr.response) {
             callback(null, {
                 data: response,
                 cacheControl: xhr.getResponseHeader('Cache-Control'),
@@ -118,7 +121,24 @@ export const getArrayBuffer = function(requestParameters: RequestParameters, cal
         }
     };
     xhr.send();
-    return xhr;
+    return { cancel: () => xhr.abort() };
+};
+
+export const postData = function(requestParameters: RequestParameters, payload: string, callback: Callback<mixed>): Cancelable {
+    const xhr = makeRequest(extend(requestParameters, {method: 'POST'}));
+
+    xhr.onerror = function() {
+        callback(new Error(xhr.statusText));
+    };
+    xhr.onload = function() {
+        if (xhr.status >= 200 && xhr.status < 300) {
+            callback(null, xhr.response);
+        } else {
+            callback(new AJAXError(xhr.statusText, xhr.status, requestParameters.url));
+        }
+    };
+    xhr.send(payload);
+    return { cancel: () => xhr.abort() };
 };
 
 function sameOrigin(url) {
@@ -129,7 +149,7 @@ function sameOrigin(url) {
 
 const transparentPngUrl = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVQYV2NgAAIAAAUAAarVyFEAAAAASUVORK5CYII=';
 
-export const getImage = function(requestParameters: RequestParameters, callback: Callback<HTMLImageElement>) {
+export const getImage = function(requestParameters: RequestParameters, callback: Callback<HTMLImageElement>): Cancelable {
     // request the image with XHR to work around caching issues
     // see https://github.com/mapbox/mapbox-gl-js/issues/1470
     return getArrayBuffer(requestParameters, (err, imgData) => {
@@ -150,8 +170,9 @@ export const getImage = function(requestParameters: RequestParameters, callback:
     });
 };
 
-export const getVideo = function(urls: Array<string>, callback: Callback<HTMLVideoElement>) {
+export const getVideo = function(urls: Array<string>, callback: Callback<HTMLVideoElement>): Cancelable {
     const video: HTMLVideoElement = window.document.createElement('video');
+    video.muted = true;
     video.onloadstart = function() {
         callback(null, video);
     };
@@ -163,5 +184,5 @@ export const getVideo = function(urls: Array<string>, callback: Callback<HTMLVid
         s.src = urls[i];
         video.appendChild(s);
     }
-    return video;
+    return { cancel: () => {} };
 };

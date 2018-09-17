@@ -29,16 +29,16 @@ export const plugins = () => [
         include: 'src/shaders/index.js'
     }),
     commonjs({
-        namedExports: {
-            '@mapbox/gl-matrix': ['vec3', 'vec4', 'mat2', 'mat3', 'mat4']
-        }
+        // global keyword handling causes Webpack compatibility issues, so we disabled it:
+        // https://github.com/mapbox/mapbox-gl-js/pull/6956
+        ignoreGlobal: true
     }),
     production ? uglify() : false
 ].filter(Boolean);
 
 // Using this instead of rollup-plugin-flow due to
 // https://github.com/leebyron/rollup-plugin-flow/issues/5
-function flow() {
+export function flow() {
     return {
         name: 'flow-remove-types',
         transform: (code) => ({

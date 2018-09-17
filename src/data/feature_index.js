@@ -13,10 +13,13 @@ import GeoJSONFeature from '../util/vectortile_to_geojson';
 import { arraysIntersect } from '../util/util';
 import { OverscaledTileID } from '../source/tile_id';
 import { register } from '../util/web_worker_transfer';
+import EvaluationParameters from '../style/evaluation_parameters';
+import SourceFeatureState from '../source/source_state';
 
 import type StyleLayer from '../style/style_layer';
 import type {FeatureFilter} from '../style-spec/feature_filter';
 import type Transform from '../geo/transform';
+import type {FilterSpecification} from '../style-spec/types';
 
 import { FeatureIndexArray } from './array_types';
 
@@ -83,12 +86,17 @@ class FeatureIndex {
         }
     }
 
-    // Finds non-symbol features in this tile at a particular position.
-    query(args: QueryParameters, styleLayers: {[string]: StyleLayer}): {[string]: Array<{ featureIndex: number, feature: GeoJSONFeature }>} {
+    loadVTLayers(): {[string]: VectorTileLayer} {
         if (!this.vtLayers) {
             this.vtLayers = new vt.VectorTile(new Protobuf(this.rawTileData)).layers;
             this.sourceLayerCoder = new DictionaryCoder(this.vtLayers ? Object.keys(this.vtLayers).sort() : ['_geojsonTileLayer']);
         }
+        return this.vtLayers;
+    }
+
+    // Finds non-symbol features in this tile at a particular position.
+    query(args: QueryParameters, styleLayers: {[string]: StyleLayer}, sourceFeatureState: SourceFeatureState): {[string]: Array<{ featureIndex: number, feature: GeoJSONFeature }>} {
+        this.loadVTLayers();
 
         const params = args.params || {},
             pixelsToTileUnits = EXTENT / args.tileSize / args.scale,
@@ -137,7 +145,12 @@ class FeatureIndex {
                     if (!featureGeometry) {
                         featureGeometry = loadGeometry(feature);
                     }
-                    return styleLayer.queryIntersectsFeature(queryGeometry, feature, featureGeometry, this.z, args.transform, pixelsToTileUnits, args.posMatrix);
+                    let featureState = {};
+                    if (feature.id) {
+                        // `feature-state` expression evaluation requires feature state to be available
+                        featureState = sourceFeatureState.getState(styleLayer.sourceLayer || '_geojsonTileLayer', feature.id);
+                    }
+                    return styleLayer.queryIntersectsFeature(queryGeometry, feature, featureState, featureGeometry, this.z, args.transform, pixelsToTileUnits, args.posMatrix);
                 }
             );
         }
@@ -163,7 +176,7 @@ class FeatureIndex {
         const sourceLayer = this.vtLayers[sourceLayerName];
         const feature = sourceLayer.feature(featureIndex);
 
-        if (!filter({zoom: this.tileID.overscaledZ}, feature))
+        if (!filter(new EvaluationParameters(this.tileID.overscaledZ), feature))
             return;
 
         for (let l = 0; l < layerIDs.length; l++) {
@@ -200,10 +213,7 @@ class FeatureIndex {
                          filterLayerIDs: Array<string>,
                          styleLayers: {[string]: StyleLayer}) {
         const result = {};
-        if (!this.vtLayers) {
-            this.vtLayers = new vt.VectorTile(new Protobuf(this.rawTileData)).layers;
-            this.sourceLayerCoder = new DictionaryCoder(this.vtLayers ? Object.keys(this.vtLayers).sort() : ['_geojsonTileLayer']);
-        }
+        this.loadVTLayers();
 
         const filter = featureFilter(filterSpec);
 

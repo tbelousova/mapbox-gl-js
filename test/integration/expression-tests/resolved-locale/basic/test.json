@@ -5,7 +5,7 @@
       "resolved-locale",
       [
         "collator",
-        {"caseSensitive": true, "diacriticSensitive": true, "locale": "en"}
+        {"case-sensitive": true, "diacritic-sensitive": true, "locale": "en"}
       ]
     ],
     "en"
@@ -19,6 +19,16 @@
       "type": "boolean"
     },
     "outputs": [true],
-    "serialized": true
+    "serialized": [
+      "==",
+      [
+        "resolved-locale",
+        [
+          "collator",
+          {"case-sensitive": true, "diacritic-sensitive": true, "locale": "en"}
+        ]
+      ],
+      "en"
+    ]
   }
 }

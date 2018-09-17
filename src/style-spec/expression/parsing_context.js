@@ -6,10 +6,10 @@ import { checkSubtype } from './types';
 import ParsingError from './parsing_error';
 import Literal from './definitions/literal';
 import Assertion from './definitions/assertion';
-import ArrayAssertion from './definitions/array';
 import Coercion from './definitions/coercion';
 import EvaluationContext from './evaluation_context';
 import CompoundExpression from './compound_expression';
+import { CollatorExpression } from './definitions/collator';
 import {isGlobalPropertyConstant, isFeatureConstant} from './is_constant';
 import Var from './definitions/var';
 
@@ -100,15 +100,15 @@ class ParsingContext {
                     // When we expect a Color but have a String or Value, we
                     // can wrap it in "to-color" coercion.
                     // Otherwise, we do static type-checking.
-                    if ((expected.kind === 'string' || expected.kind === 'number' || expected.kind === 'boolean' || expected.kind === 'object') && actual.kind === 'value') {
+                    if ((expected.kind === 'string' || expected.kind === 'number' || expected.kind === 'boolean' || expected.kind === 'object' || expected.kind === 'array') && actual.kind === 'value') {
                         if (!options.omitTypeAnnotations) {
                             parsed = new Assertion(expected, [parsed]);
                         }
-                    } else if (expected.kind === 'array' && actual.kind === 'value') {
-                        if (!options.omitTypeAnnotations) {
-                            parsed = new ArrayAssertion(expected, parsed);
-                        }
                     } else if (expected.kind === 'color' && (actual.kind === 'value' || actual.kind === 'string')) {
+                        if (!options.omitTypeAnnotations) {
+                            parsed = new Coercion(expected, [parsed]);
+                        }
+                    } else if (expected.kind === 'formatted' && (actual.kind === 'value' || actual.kind === 'string')) {
                         if (!options.omitTypeAnnotations) {
                             parsed = new Coercion(expected, [parsed]);
                         }
@@ -193,11 +193,15 @@ function isConstant(expression: Expression) {
         return isConstant(expression.boundExpression);
     } else if (expression instanceof CompoundExpression && expression.name === 'error') {
         return false;
+    } else if (expression instanceof CollatorExpression) {
+        // Although the results of a Collator expression with fixed arguments
+        // generally shouldn't change between executions, we can't serialize them
+        // as constant expressions because results change based on environment.
+        return false;
     }
 
     const isTypeAnnotation = expression instanceof Coercion ||
-        expression instanceof Assertion ||
-        expression instanceof ArrayAssertion;
+        expression instanceof Assertion;
 
     let childrenConstant = true;
     expression.eachChild(child => {
@@ -219,5 +223,5 @@ function isConstant(expression: Expression) {
     }
 
     return isFeatureConstant(expression) &&
-        isGlobalPropertyConstant(expression, ['zoom', 'heatmap-density', 'line-progress']);
+        isGlobalPropertyConstant(expression, ['zoom', 'heatmap-density', 'line-progress', 'is-supported-script']);
 }

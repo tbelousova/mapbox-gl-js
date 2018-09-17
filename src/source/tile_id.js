@@ -1,6 +1,6 @@
 // @flow
 
-import WhooTS from '@mapbox/whoots-js';
+import {getTileBBox} from '@mapbox/whoots-js';
 
 import assert from 'assert';
 import { register } from '../util/web_worker_transfer';
@@ -28,7 +28,7 @@ export class CanonicalTileID {
 
     // given a list of urls, choose a url template and return a tile URL
     url(urls: Array<string>, scheme: ?string) {
-        const bbox = WhooTS.getTileBBox(this.x, this.y, this.z);
+        const bbox = getTileBBox(this.x, this.y, this.z);
         const quadkey = getQuadkey(this.z, this.x, this.y);
 
         return urls[(this.x + this.y) % urls.length]
@@ -66,6 +66,10 @@ export class OverscaledTileID {
         this.wrap = wrap;
         this.canonical = new CanonicalTileID(z, +x, +y);
         this.key = calculateKey(wrap, overscaledZ, x, y);
+    }
+
+    equals(id: OverscaledTileID) {
+        return this.overscaledZ === id.overscaledZ && this.wrap === id.wrap && this.canonical.equals(id.canonical);
     }
 
     scaledTo(targetZ: number) {
@@ -120,6 +124,10 @@ export class OverscaledTileID {
 
     wrapped() {
         return new OverscaledTileID(this.overscaledZ, 0, this.canonical.z, this.canonical.x, this.canonical.y);
+    }
+
+    unwrapTo(wrap: number) {
+        return new OverscaledTileID(this.overscaledZ, wrap, this.canonical.z, this.canonical.x, this.canonical.y);
     }
 
     overscaleFactor() {
